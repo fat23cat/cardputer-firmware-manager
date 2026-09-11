@@ -17,6 +17,8 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 ESP_IMAGE_MAGIC = b"\xe9"
 ESP_APP_DESCRIPTOR_OFFSET = 0x20
 ESP_APP_DESCRIPTOR_MAGIC = b"\x32\x54\xcd\xab"
+ESP_APP_PROJECT_NAME_OFFSET = ESP_APP_DESCRIPTOR_OFFSET + 48
+ESP_APP_PROJECT_NAME_SIZE = 32
 
 
 class FirmwareError(RuntimeError):
@@ -30,6 +32,13 @@ def load_catalog(path: Path) -> Dict[str, Any]:
         raise FirmwareError(f"cannot read catalog {path}: {error}") from error
     if catalog.get("schema_version") != 1 or not isinstance(catalog.get("apps"), dict):
         raise FirmwareError("unsupported or invalid firmware catalog")
+    contract = catalog.get("partition_contract")
+    if not isinstance(contract, list) or not contract:
+        raise FirmwareError("firmware catalog has no partition contract")
+    partition_fields = {"name", "type", "subtype", "offset", "size"}
+    for partition in contract:
+        if not isinstance(partition, dict) or not partition_fields.issubset(partition):
+            raise FirmwareError("firmware catalog has an invalid partition contract")
     for app_id, app in catalog["apps"].items():
         required = {
             "repository",
@@ -39,12 +48,30 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             "release_asset",
             "partition",
             "partition_size",
+            "project_name",
             "sd_path",
             "aliases",
         }
         missing = required.difference(app)
         if missing:
             raise FirmwareError(f"{app_id}: missing catalog fields: {', '.join(sorted(missing))}")
+        build_environment = app.get("build_environment", {"unset": []})
+        unset = (
+            build_environment.get("unset")
+            if isinstance(build_environment, dict)
+            else None
+        )
+        if (
+            not isinstance(unset, list)
+            or any(not isinstance(variable, str) or not variable for variable in unset)
+        ):
+            raise FirmwareError(f"{app_id}: invalid build environment")
+        try:
+            project_name = app["project_name"].encode("ascii")
+        except (AttributeError, UnicodeEncodeError) as error:
+            raise FirmwareError(f"{app_id}: invalid ESP project name") from error
+        if not project_name or len(project_name) > ESP_APP_PROJECT_NAME_SIZE:
+            raise FirmwareError(f"{app_id}: invalid ESP project name")
     return catalog
 
 
@@ -118,17 +145,51 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_image(app_id: str, image: Path, partition_size: int) -> None:
+def resolve_sd_root(sd_root: Path, require_mount: bool = True) -> Path:
+    resolved = sd_root.expanduser().resolve()
+    if resolved in {Path("/"), Path.home().resolve()} or not resolved.is_dir():
+        raise FirmwareError(f"SD root must be an existing mounted directory: {resolved}")
+    if require_mount and not resolved.is_mount():
+        raise FirmwareError(f"SD root is not a mounted filesystem root: {resolved}")
+    return resolved
+
+
+def sd_path(sd_root: Path, relative_path: str) -> Path:
+    relative = Path(relative_path)
+    if relative.is_absolute():
+        raise FirmwareError(f"path points outside the SD root: {relative_path}")
+    destination = (sd_root / relative).resolve()
+    try:
+        destination.relative_to(sd_root)
+    except ValueError as error:
+        raise FirmwareError(f"path points outside the SD root: {relative_path}") from error
+    return destination
+
+
+def validate_image(
+    app_id: str,
+    image: Path,
+    partition_size: int,
+    expected_project_name: str,
+) -> None:
     if not image.is_file():
         raise FirmwareError(f"{app_id}: image does not exist: {image}")
     with image.open("rb") as image_file:
         magic = image_file.read(1)
         image_file.seek(ESP_APP_DESCRIPTOR_OFFSET)
         descriptor_magic = image_file.read(len(ESP_APP_DESCRIPTOR_MAGIC))
+        image_file.seek(ESP_APP_PROJECT_NAME_OFFSET)
+        project_name = image_file.read(ESP_APP_PROJECT_NAME_SIZE).split(b"\0", 1)[0]
     if magic != ESP_IMAGE_MAGIC:
         raise FirmwareError(f"{app_id}: image is not a raw ESP application image")
     if descriptor_magic != ESP_APP_DESCRIPTOR_MAGIC:
         raise FirmwareError(f"{app_id}: image has no ESP application descriptor")
+    if project_name != expected_project_name.encode("ascii"):
+        actual_project_name = project_name.decode("ascii", errors="replace")
+        raise FirmwareError(
+            f"{app_id}: image project is {actual_project_name!r}; "
+            f"expected {expected_project_name!r}"
+        )
     image_size = image.stat().st_size
     if image_size > partition_size:
         raise FirmwareError(
@@ -178,7 +239,7 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
-def _atomic_copy(source: Path, destination: Path) -> None:
+def _atomic_copy(source: Path, destination: Path, expected_sha256: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{destination.name}.", dir=str(destination.parent)
@@ -188,6 +249,8 @@ def _atomic_copy(source: Path, destination: Path) -> None:
         shutil.copyfile(source, temporary_name)
         with open(temporary_name, "rb") as temporary_file:
             os.fsync(temporary_file.fileno())
+        if sha256(Path(temporary_name)) != expected_sha256:
+            raise FirmwareError(f"copy verification failed for {destination.name}")
         os.replace(temporary_name, destination)
     except BaseException:
         try:
@@ -202,18 +265,31 @@ def stage_images(
     images: Mapping[str, Path],
     sd_root: Path,
     sources: Optional[Mapping[str, Mapping[str, str]]] = None,
+    *,
+    require_mount: bool = True,
 ) -> List[Path]:
-    sd_root = sd_root.expanduser().resolve()
-    if sd_root in {Path("/"), Path.home().resolve()} or not sd_root.is_dir():
-        raise FirmwareError(f"SD root must be an existing mounted directory: {sd_root}")
+    sd_root = resolve_sd_root(sd_root, require_mount=require_mount)
     if not images:
         raise FirmwareError("no application images selected")
+    source_digests: Dict[str, str] = {}
     for app_id, image in images.items():
         if app_id not in catalog["apps"]:
             raise FirmwareError(f"unknown application: {app_id}")
-        validate_image(app_id, image, catalog["apps"][app_id]["partition_size"])
+        app = catalog["apps"][app_id]
+        validate_image(
+            app_id,
+            image,
+            app["partition_size"],
+            app["project_name"],
+        )
+        source_digests[app_id] = sha256(image)
 
-    aliases_path = sd_root / ".crub" / "aliases"
+    destinations = {
+        app_id: sd_path(sd_root, app["sd_path"])
+        for app_id, app in catalog["apps"].items()
+    }
+
+    aliases_path = sd_path(sd_root, ".crub/aliases")
     managed = _managed_aliases(catalog)
     managed_names = {name for name, _command in managed}
     preserved = [
@@ -221,7 +297,8 @@ def stage_images(
     ]
     merged_aliases = preserved + managed
 
-    lock_path = sd_root / "firmware" / "firmware-manager-lock.json"
+    lock_path = sd_path(sd_root, "firmware/firmware-manager-lock.json")
+    checksums_path = sd_path(sd_root, "firmware/SHA256SUMS")
     try:
         lock = (
             json.loads(lock_path.read_text())
@@ -237,8 +314,8 @@ def stage_images(
 
     staged: List[Path] = []
     for app_id, source in images.items():
-        destination = sd_root / catalog["apps"][app_id]["sd_path"]
-        _atomic_copy(source, destination)
+        destination = destinations[app_id]
+        _atomic_copy(source, destination, source_digests[app_id])
         staged.append(destination)
 
     aliases_data = "".join(f"{name}\n{command}\n" for name, command in merged_aliases)
@@ -246,10 +323,10 @@ def stage_images(
 
     checksum_lines: List[str] = []
     for app_id, app in catalog["apps"].items():
-        destination = sd_root / app["sd_path"]
+        destination = destinations[app_id]
         if destination.is_file():
             digest = sha256(destination)
-            checksum_lines.append(f"{digest}  {destination.name}\n")
+            checksum_lines.append(f"{digest}  {app['sd_path']}\n")
             if app_id in images:
                 entry = {
                     "sha256": digest,
@@ -260,7 +337,7 @@ def stage_images(
                     entry.update(sources[app_id])
                 lock["apps"][app_id] = entry
     _atomic_write(
-        sd_root / "firmware" / "SHA256SUMS", "".join(checksum_lines).encode()
+        checksums_path, "".join(checksum_lines).encode()
     )
     _atomic_write(lock_path, (json.dumps(lock, indent=2, sort_keys=True) + "\n").encode())
     return staged

@@ -8,17 +8,41 @@
     "revision": "669f70b219d2b2cb6fd18e952284eb25b2652d62",
     "launcher_partition": "test"
   },
+  "partition_contract": [
+    {"name": "nvs", "type": "data", "subtype": "nvs", "offset": 36864, "size": 20480},
+    {"name": "otadata", "type": "data", "subtype": "ota", "offset": 57344, "size": 8192},
+    {"name": "test", "type": "app", "subtype": "test", "offset": 65536, "size": 786432},
+    {"name": "hub", "type": "app", "subtype": "ota_0", "offset": 851968, "size": 2621440},
+    {"name": "codex", "type": "app", "subtype": "ota_1", "offset": 3473408, "size": 2097152},
+    {"name": "apps_nvs", "type": "data", "subtype": "nvs", "offset": 5570560, "size": 65536},
+    {"name": "hub_config", "type": "data", "subtype": "nvs", "offset": 5636096, "size": 65536},
+    {"name": "vfs", "type": "data", "subtype": "fat", "offset": 6750208, "size": 524288},
+    {"name": "spiffs", "type": "data", "subtype": "spiffs", "offset": 7274496, "size": 1048576},
+    {"name": "coredump", "type": "data", "subtype": "coredump", "offset": 8323072, "size": 65536}
+  ],
   "apps": {
     "hub": {
       "name": "Cardputer Hub",
       "repository": "fat23cat/cardputer-hub",
       "local_repository": "cardputer-hub",
-      "build_command": ["make", "build"],
+      "build_command": ["./scripts/build_firmware.sh"],
+      "build_environment": {
+        "unset": [
+          "IDF_PATH",
+          "IDF_TOOLS_PATH",
+          "IDF_PYTHON_ENV_PATH",
+          "IDF_DEACTIVATE_FILE_PATH",
+          "ESP_ROM_ELF_DIR",
+          "OPENOCD_SCRIPTS",
+          "M5CARDPUTER_DEMO_PATH"
+        ]
+      },
       "local_image": "build/cardputer_hub.bin",
       "release_asset": "cardputer-hub-v(?!.*-partitions\\.bin$).+\\.bin",
       "checksum_asset": "SHA256SUMS",
       "partition": "hub",
       "partition_size": 2621440,
+      "project_name": "cardputer_hub",
       "sd_path": "firmware/cardputer-hub.bin",
       "aliases": {
         "hub": "launch -f hub",
@@ -30,11 +54,23 @@
       "repository": "fat23cat/codex-microputer-adv",
       "local_repository": "codex-microputer-adv",
       "build_command": ["./tools/build.sh"],
+      "build_environment": {
+        "unset": [
+          "IDF_PATH",
+          "IDF_TOOLS_PATH",
+          "IDF_PYTHON_ENV_PATH",
+          "IDF_DEACTIVATE_FILE_PATH",
+          "ESP_ROM_ELF_DIR",
+          "OPENOCD_SCRIPTS",
+          "M5CARDPUTER_DEMO_PATH"
+        ]
+      },
       "local_image": "dist/Codex.bin",
       "release_asset": "Codex\\.bin",
       "checksum_asset": "Codex.bin.sha256",
       "partition": "codex",
       "partition_size": 2097152,
+      "project_name": "codex_microputer_adv",
       "sd_path": "firmware/Codex.bin",
       "aliases": {
         "codex": "launch -f codex",

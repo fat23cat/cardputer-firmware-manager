@@ -55,6 +55,11 @@ python3 -m firmware_manager local --app all \
   --build --sd /Volumes/CARDPUTER
 ```
 
+Each repository owns its build wrapper and pinned ESP-IDF installation. The
+manager removes inherited ESP-IDF variables before every build, so Hub 5.5.5
+and Codex 5.5.3 can be built together without one toolchain leaking into the
+other. Complete each repository's one-time setup before using `--build`.
+
 Stage only one local application:
 
 ```bash
@@ -98,9 +103,10 @@ After staging:
 
 1. Safely eject the SD volume from the computer.
 2. Press any Cardputer key to exit `usbsd`.
-3. Run `uphub`, `upcodex`, or both.
-4. Wait for `app: ok` and `flash complete` after every command.
-5. Launch the updated app with `hub` or `codex`.
+3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
+4. Run `uphub`, `upcodex`, or both.
+5. Wait for `app: ok` and `flash complete` after every command.
+6. Launch the updated app with `hub` or `codex`.
 
 CRUB treats `&&` as an unconditional separator, so update aliases never chain
 an automatic launch.
@@ -110,8 +116,11 @@ an automatic launch.
 Before writing to the SD card, the manager:
 
 - requires an existing mounted output directory;
-- accepts only raw ESP application images with an app descriptor;
+- keeps every catalog-provided output path inside that mounted SD root;
+- accepts only raw ESP application images whose app descriptor identifies the
+  selected managed application;
 - rejects images larger than their assigned partition;
+- verifies every copy and later `doctor --sd` run against SHA-256 metadata;
 - verifies GitHub's asset digest or a published checksum asset;
 - merges its four aliases without deleting unrelated user aliases;
 - preserves firmware for applications that were not selected;
