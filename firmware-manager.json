@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "device": "M5Stack Cardputer ADV",
+  "flash_size": 8388608,
+  "layout": "layouts/cardputer-adv-8mb.csv",
+  "crub": {
+    "repository": "wisnc/crub",
+    "revision": "669f70b219d2b2cb6fd18e952284eb25b2652d62",
+    "launcher_partition": "test"
+  },
+  "apps": {
+    "hub": {
+      "name": "Cardputer Hub",
+      "repository": "fat23cat/cardputer-hub",
+      "local_repository": "cardputer-hub",
+      "build_command": ["make", "build"],
+      "local_image": "build/cardputer_hub.bin",
+      "release_asset": "cardputer-hub-v(?!.*-partitions\\.bin$).+\\.bin",
+      "checksum_asset": "SHA256SUMS",
+      "partition": "hub",
+      "partition_size": 2621440,
+      "sd_path": "firmware/cardputer-hub.bin",
+      "aliases": {
+        "hub": "launch -f hub",
+        "uphub": "flash /firmware/cardputer-hub.bin hub"
+      }
+    },
+    "codex": {
+      "name": "Codex Microputer ADV",
+      "repository": "fat23cat/codex-microputer-adv",
+      "local_repository": "codex-microputer-adv",
+      "build_command": ["./tools/build.sh"],
+      "local_image": "dist/Codex.bin",
+      "release_asset": "Codex\\.bin",
+      "checksum_asset": "Codex.bin.sha256",
+      "partition": "codex",
+      "partition_size": 2097152,
+      "sd_path": "firmware/Codex.bin",
+      "aliases": {
+        "codex": "launch -f codex",
+        "upcodex": "flash /firmware/Codex.bin codex"
+      }
+    }
+  }
+}
