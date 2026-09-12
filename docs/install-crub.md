@@ -61,9 +61,10 @@ Do not repeat those commands during normal application updates.
 
 Format the microSD card as FAT32, run `usbsd`, and use this repository's
 manager to stage local builds or GitHub Releases. Safely eject the volume, exit
-`usbsd`, then run:
+`usbsd`, remount the card and reload aliases with `sd`, then run:
 
 ```text
+sd
 uphub
 upcodex
 ```
