@@ -46,6 +46,8 @@
       "sd_path": "firmware/cardputer-hub.bin",
       "aliases": {
         "hub": "launch -f hub",
+        "hubfast": "echo launch -f > /.crub/boot",
+        "crubmenu": "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
         "uphub": "flash /firmware/cardputer-hub.bin hub"
       }
     },
