@@ -156,6 +156,8 @@ class StagingTest(unittest.TestCase):
                     "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
                     "codex",
                     "launch -f codex",
+                    "codexfast",
+                    "echo launch -f codex > /.crub/boot",
                     "uphub",
                     "flash /firmware/cardputer-hub.bin hub",
                     "upcodex",

@@ -76,6 +76,7 @@
       "sd_path": "firmware/Codex.bin",
       "aliases": {
         "codex": "launch -f codex",
+        "codexfast": "echo launch -f codex > /.crub/boot",
         "upcodex": "flash /firmware/Codex.bin codex"
       }
     }

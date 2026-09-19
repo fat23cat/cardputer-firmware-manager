@@ -111,17 +111,25 @@ After staging:
 CRUB treats `&&` as an unconditional separator, so update aliases never chain
 an automatic launch.
 
-### Hub USB serial diagnostics
+### Hub and Codex USB serial diagnostics
 
 CRUB normally initializes its USB mass-storage device before an application is
-launched. If Cardputer Hub's USB Serial/JTAG console does not enumerate after
-the `hub` alias, run:
+launched. If Cardputer Hub's or Codex's USB Serial/JTAG console does not
+enumerate after the `hub` or `codex` alias, run:
 
 ```text
 hubfast
 ```
 
-Then reset the Cardputer. This replaces `/.crub/boot` with `launch -f`, so Hub
+or
+
+```text
+codexfast
+```
+
+Then reset the Cardputer. `hubfast` replaces `/.crub/boot` with `launch -f`;
+`codexfast` replaces it with `launch -f codex` (Codex is not CRUB's default
+boot partition, so it must be named explicitly). Either way, the target app
 starts before CRUB initializes USB and continues to start automatically on
 later resets.
 
@@ -133,8 +141,8 @@ crubmenu
 ```
 
 Reset once more. `crubmenu` restores the default `boots 1500` and `fetch` boot
-commands. Both aliases are installed by the next `local` or `release` staging
-run; neither command writes the Cardputer's internal flash.
+commands. All three aliases are installed by the next `local` or `release`
+staging run; none of them writes the Cardputer's internal flash.
 
 ## Safety model
 
@@ -147,7 +155,7 @@ Before writing to the SD card, the manager:
 - rejects images larger than their assigned partition;
 - verifies every copy and later `doctor --sd` run against SHA-256 metadata;
 - verifies GitHub's asset digest or a published checksum asset;
-- merges its six aliases without deleting unrelated user aliases;
+- merges its seven aliases without deleting unrelated user aliases;
 - preserves firmware for applications that were not selected;
 - writes `firmware/SHA256SUMS` and `firmware/firmware-manager-lock.json`.
 
