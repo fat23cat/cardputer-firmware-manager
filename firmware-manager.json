@@ -12,14 +12,21 @@
     {"name": "nvs", "type": "data", "subtype": "nvs", "offset": 36864, "size": 20480},
     {"name": "otadata", "type": "data", "subtype": "ota", "offset": 57344, "size": 8192},
     {"name": "test", "type": "app", "subtype": "test", "offset": 65536, "size": 786432},
-    {"name": "hub", "type": "app", "subtype": "ota_0", "offset": 851968, "size": 2621440},
-    {"name": "codex", "type": "app", "subtype": "ota_1", "offset": 3473408, "size": 2097152},
-    {"name": "apps_nvs", "type": "data", "subtype": "nvs", "offset": 5570560, "size": 65536},
-    {"name": "hub_config", "type": "data", "subtype": "nvs", "offset": 5636096, "size": 65536},
-    {"name": "vfs", "type": "data", "subtype": "fat", "offset": 6750208, "size": 524288},
-    {"name": "spiffs", "type": "data", "subtype": "spiffs", "offset": 7274496, "size": 1048576},
+    {"name": "hub", "type": "app", "subtype": "ota_0", "offset": 851968, "size": 2097152},
+    {"name": "extra", "type": "app", "subtype": "ota_1", "offset": 2949120, "size": 4980736},
+    {"name": "apps_nvs", "type": "data", "subtype": "nvs", "offset": 7929856, "size": 65536},
+    {"name": "hub_config", "type": "data", "subtype": "nvs", "offset": 7995392, "size": 65536},
+    {"name": "spiffs", "type": "data", "subtype": "spiffs", "offset": 8060928, "size": 131072},
     {"name": "coredump", "type": "data", "subtype": "coredump", "offset": 8323072, "size": 65536}
   ],
+  "aliases": {
+    "extra": "launch -f extra",
+    "extrafast": "echo launch -f extra > /.crub/boot"
+  },
+  "retired_aliases": {
+    "codex": "launch -f codex",
+    "codexfast": "echo launch -f codex > /.crub/boot"
+  },
   "apps": {
     "hub": {
       "name": "Cardputer Hub",
@@ -41,7 +48,7 @@
       "release_asset": "cardputer-hub-v(?!.*-partitions\\.bin$).+\\.bin",
       "checksum_asset": "SHA256SUMS",
       "partition": "hub",
-      "partition_size": 2621440,
+      "partition_size": 2097152,
       "project_name": "cardputer_hub",
       "sd_path": "firmware/cardputer-hub.bin",
       "aliases": {
@@ -70,14 +77,29 @@
       "local_image": "dist/Codex.bin",
       "release_asset": "Codex\\.bin",
       "checksum_asset": "Codex.bin.sha256",
-      "partition": "codex",
-      "partition_size": 2097152,
+      "partition": "extra",
+      "partition_size": 4980736,
       "project_name": "codex_microputer_adv",
       "sd_path": "firmware/Codex.bin",
       "aliases": {
-        "codex": "launch -f codex",
-        "codexfast": "echo launch -f codex > /.crub/boot",
-        "upcodex": "flash /firmware/Codex.bin codex"
+        "upcodex": "flash /firmware/Codex.bin extra"
+      }
+    },
+    "bruce": {
+      "name": "Bruce",
+      "repository": "pr3y/Bruce",
+      "release_asset": "Bruce-m5stack-cardputer\\.bin",
+      "release_image": "merged",
+      "release_pin": {
+        "tag": "1.16.1",
+        "sha256": "e0a06966e601fecdb78470168b423690392f5ca14502a703588d4d14d0722033"
+      },
+      "partition": "extra",
+      "partition_size": 4980736,
+      "project_name": "arduino-lib-builder",
+      "sd_path": "firmware/Bruce.bin",
+      "aliases": {
+        "upbruce": "flash /firmware/Bruce.bin extra"
       }
     }
   }

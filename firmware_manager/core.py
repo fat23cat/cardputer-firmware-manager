@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import tempfile
 import urllib.error
 import urllib.parse
@@ -19,6 +20,9 @@ ESP_APP_DESCRIPTOR_OFFSET = 0x20
 ESP_APP_DESCRIPTOR_MAGIC = b"\x32\x54\xcd\xab"
 ESP_APP_PROJECT_NAME_OFFSET = ESP_APP_DESCRIPTOR_OFFSET + 48
 ESP_APP_PROJECT_NAME_SIZE = 32
+ESP_PARTITION_TABLE_OFFSET = 0x8000
+ESP_PARTITION_TABLE_SIZE = 0xC00
+ESP_PARTITION_MAGIC = b"\xaa\x50"
 
 
 class FirmwareError(RuntimeError):
@@ -39,12 +43,15 @@ def load_catalog(path: Path) -> Dict[str, Any]:
     for partition in contract:
         if not isinstance(partition, dict) or not partition_fields.issubset(partition):
             raise FirmwareError("firmware catalog has an invalid partition contract")
+    for field in ("aliases", "retired_aliases"):
+        aliases = catalog.get(field, {})
+        if not isinstance(aliases, dict) or any(
+            not isinstance(value, str) for value in aliases.values()
+        ):
+            raise FirmwareError(f"firmware catalog has invalid {field}")
     for app_id, app in catalog["apps"].items():
         required = {
             "repository",
-            "local_repository",
-            "build_command",
-            "local_image",
             "release_asset",
             "partition",
             "partition_size",
@@ -53,8 +60,24 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             "aliases",
         }
         missing = required.difference(app)
+        local_fields = {"local_repository", "build_command", "local_image"}
+        if local_fields.intersection(app):
+            missing.update(local_fields.difference(app))
         if missing:
             raise FirmwareError(f"{app_id}: missing catalog fields: {', '.join(sorted(missing))}")
+        if app.get("release_image", "app") not in {"app", "merged"}:
+            raise FirmwareError(f"{app_id}: invalid release image format")
+        if "release_pin" in app:
+            pin = app["release_pin"]
+            if (
+                not isinstance(pin, dict)
+                or set(pin) != {"tag", "sha256"}
+                or not isinstance(pin["tag"], str)
+                or not pin["tag"]
+                or not isinstance(pin["sha256"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", pin["sha256"])
+            ):
+                raise FirmwareError(f"{app_id}: invalid release pin")
         build_environment = app.get("build_environment", {"unset": []})
         unset = (
             build_environment.get("unset")
@@ -197,6 +220,55 @@ def validate_image(
         )
 
 
+def _esp_image_length(image: bytes) -> Optional[int]:
+    """Return the length of the ESP application image at the start of image."""
+    if len(image) < 24 or image[0:1] != ESP_IMAGE_MAGIC or image[1] > 16:
+        return None
+    position = 24
+    for _segment in range(image[1]):
+        if position + 8 > len(image):
+            return None
+        _load_address, length = struct.unpack_from("<II", image, position)
+        position += 8 + length
+    position = (position + 16) & ~15
+    if image[23]:
+        position += 32
+    return position if position <= len(image) else None
+
+
+def extract_merged_app(app_id: str, merged: bytes) -> bytes:
+    """Return the raw application stored in a full-flash merged image.
+
+    The application partition is chosen the same way CRUB's flash command
+    chooses it: ota_0, then factory, then any application except test.
+    """
+    table = ESP_PARTITION_TABLE_OFFSET
+    if merged[table : table + 2] != ESP_PARTITION_MAGIC:
+        raise FirmwareError(f"{app_id}: merged image has no partition table")
+    apps: List[Tuple[int, int]] = []
+    for entry in range(table, table + ESP_PARTITION_TABLE_SIZE, 32):
+        if merged[entry : entry + 2] != ESP_PARTITION_MAGIC:
+            break
+        kind, subtype, offset = struct.unpack_from("<BBI", merged, entry + 2)
+        if kind == 0 and subtype != 0x20:
+            apps.append((subtype, offset))
+    chosen = next(
+        (
+            offset
+            for preferred in (0x10, 0x00, None)
+            for subtype, offset in apps
+            if preferred is None or subtype == preferred
+        ),
+        None,
+    )
+    if chosen is None:
+        raise FirmwareError(f"{app_id}: merged image has no application partition")
+    length = _esp_image_length(merged[chosen:])
+    if length is None:
+        raise FirmwareError(f"{app_id}: merged image application is truncated")
+    return merged[chosen : chosen + length]
+
+
 def _read_aliases(path: Path) -> List[Tuple[str, str]]:
     if not path.exists():
         return []
@@ -213,6 +285,7 @@ def _managed_aliases(catalog: Mapping[str, Any]) -> List[Tuple[str, str]]:
     aliases: List[Tuple[str, str]] = []
     for app in catalog["apps"].values():
         aliases.extend((name, command) for name, command in app["aliases"].items())
+    aliases.extend(catalog.get("aliases", {}).items())
     aliases.sort(key=lambda pair: pair[0].startswith("up"))
     for name, command in aliases:
         if not name or len(name) > 15 or not command or len(command) > 63:
@@ -292,8 +365,11 @@ def stage_images(
     aliases_path = sd_path(sd_root, ".crub/aliases")
     managed = _managed_aliases(catalog)
     managed_names = {name for name, _command in managed}
+    retired = set(catalog.get("retired_aliases", {}).items())
     preserved = [
-        pair for pair in _read_aliases(aliases_path) if pair[0] not in managed_names
+        pair
+        for pair in _read_aliases(aliases_path)
+        if pair[0] not in managed_names and pair not in retired
     ]
     merged_aliases = preserved + managed
 
@@ -379,6 +455,9 @@ class GitHubReleaseClient:
         destination: Path,
     ) -> Tuple[Path, str]:
         repository = app["repository"]
+        pin = app.get("release_pin")
+        if pin and not tag:
+            tag = pin["tag"]
         if tag:
             endpoint = (
                 f"https://api.github.com/repos/{repository}/releases/tags/"
@@ -438,6 +517,12 @@ class GitHubReleaseClient:
                     checksum_verified = True
         if not expected_digest and not checksum_verified:
             raise FirmwareError(f"{app_id}: release has no verifiable SHA-256")
+        if pin and tag == pin["tag"] and actual_digest != pin["sha256"]:
+            raise FirmwareError(
+                f"{app_id}: release {tag} does not match its pinned SHA-256"
+            )
+        if app.get("release_image") == "merged":
+            data = extract_merged_app(app_id, data)
         release_tag = str(release.get("tag_name") or tag or "unknown")
         safe_tag = re.sub(r"[^A-Za-z0-9._-]", "_", release_tag)
         output = destination / app_id / safe_tag / asset["name"]

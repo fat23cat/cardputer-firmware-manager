@@ -1,8 +1,11 @@
 # Install or recover CRUB
 
 This is the one-time provisioning procedure for an M5Stack Cardputer ADV with
-an 8 MiB flash chip. It installs CRUB, Cardputer Hub, and Codex Microputer ADV
-in independent application partitions.
+an 8 MiB flash chip. It installs CRUB and Cardputer Hub in their own
+application partitions, and Codex Microputer ADV or Bruce in the shared `extra`
+slot. A device that already runs the earlier dedicated Codex layout follows
+[Migrate from the dedicated Codex layout](#migrate-from-the-dedicated-codex-layout)
+instead of the first-install steps.
 
 Changing the bootloader or partition table can temporarily make the installed
 firmware unbootable. ESP32-S3 ROM download mode remains available because this
@@ -69,7 +72,57 @@ uphub
 upcodex
 ```
 
-Each command must report `app: ok` and `flash complete`.
+Each command must report `app: ok` and `flash complete`. Use `upbruce` instead
+of `upcodex` to put Bruce in `extra`; both images can stay on the card.
+
+## Migrate from the dedicated Codex layout
+
+The earlier layout had a 2.5 MiB `hub`, a dedicated `codex` partition at
+`0x350000`, `apps_nvs` at `0x550000`, `hub_config` at `0x560000`, a 512 KiB
+`vfs`, and a 1 MiB `spiffs`. The current layout keeps `hub` at `0xd0000`,
+replaces `codex` with the 4.75 MiB `extra` slot, and moves both settings
+partitions to the end of flash. Copying them preserves Hub and Codex settings.
+
+1. If `codexfast` is active, restore the CRUB menu with `crubmenu` first. The
+   boot command `launch -f codex` has no target after migration.
+2. [Back up the complete device](#back-up-the-complete-device).
+3. Save both settings partitions from their old offsets with the same port:
+
+   ```bash
+   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
+     read_flash 0x550000 0x10000 apps_nvs.bin
+   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
+     read_flash 0x560000 0x10000 hub_config.bin
+   ```
+
+4. [Build CRUB with the shared layout](#build-crub-with-the-shared-layout) from
+   this revision of the repository.
+5. Write the new table, the rebuilt launcher, and both settings partitions at
+   their new offsets. The bootloader does not change:
+
+   ```bash
+   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
+     --baud 115200 --before default_reset --after hard_reset write_flash -z \
+     0x8000 .pio/build/m5cardputer/partitions.bin \
+     0x10000 .pio/build/m5cardputer/firmware.bin \
+     0x790000 apps_nvs.bin \
+     0x7a0000 hub_config.bin
+   ```
+
+6. Verify the four written ranges with `esptool verify_flash`.
+7. Boot CRUB and clear the new `spiffs` range, which holds leftovers from the
+   old one. Do not erase `nvs`, `apps_nvs`, or `hub_config`:
+
+   ```text
+   erase spiffs
+   ```
+
+8. Stage Hub, Codex, and optionally Bruce with this repository's manager, then
+   in CRUB run `sd`, `uphub`, and `upcodex` or `upbruce`. Staging also removes
+   the retired `codex` and `codexfast` aliases. Launch the slot with `extra`.
+
+If anything fails, restore the full backup as described under
+[Recovery](#recovery).
 
 ## Updating CRUB
 
