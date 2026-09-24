@@ -553,7 +553,7 @@ class ReleaseClientTest(unittest.TestCase):
             ],
         }
         responses = {
-            f"https://api.github.com/repos/pr3y/Bruce/releases/tags/{tag}": json.dumps(
+            f"https://api.github.com/repos/BruceDevices/firmware/releases/tags/{tag}": json.dumps(
                 release
             ).encode(),
             "https://example.invalid/bruce": asset,

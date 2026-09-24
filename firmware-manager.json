@@ -87,7 +87,7 @@
     },
     "bruce": {
       "name": "Bruce",
-      "repository": "pr3y/Bruce",
+      "repository": "BruceDevices/firmware",
       "release_asset": "Bruce-m5stack-cardputer\\.bin",
       "release_image": "merged",
       "release_pin": {

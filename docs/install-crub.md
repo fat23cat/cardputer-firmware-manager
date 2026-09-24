@@ -37,29 +37,68 @@ git clone https://github.com/wisnc/crub.git
 cd crub
 git checkout 669f70b219d2b2cb6fd18e952284eb25b2652d62
 cp /path/to/cardputer-firmware-manager/layouts/cardputer-adv-8mb.csv partitions.csv
-export PLATFORMIO_CORE_DIR="$PWD/.platformio-core"
-uvx --from platformio==6.2.0 pio run -e bootloader
-uvx --from platformio==6.2.0 pio run -e m5cardputer
+
+# Bootloader: QIO flash mode, pinned platform, separate build directory.
+sed -i.dio \
+  -e 's/^CONFIG_ESPTOOLPY_FLASHMODE_DIO=y$/# CONFIG_ESPTOOLPY_FLASHMODE_DIO is not set/' \
+  -e 's/^# CONFIG_ESPTOOLPY_FLASHMODE_QIO is not set$/CONFIG_ESPTOOLPY_FLASHMODE_QIO=y/' \
+  sdkconfig.bootloader
+cat > bootloader-qio.ini <<'EOF'
+[platformio]
+build_dir = .pio/build-qio
+
+[env:bootloader]
+platform = https://github.com/pioarduino/platform-espressif32/releases/download/55.03.39/platform-espressif32.zip
+board = esp32-s3-devkitc-1
+framework = espidf
+board_build.partitions = partitions.csv
+build_flags = -DESP32S3
+EOF
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core-55.03.39" \
+  uvx --from platformio==6.1.19 pio run -c bootloader-qio.ini -e bootloader
+
+# Launcher and shared partition table.
+PLATFORMIO_CORE_DIR="$PWD/.platformio-core" \
+  uvx --from platformio==6.2.0 pio run -e m5cardputer
 ```
 
 The pinned upstream commit is titled `3.0.1`, although its source still reports
 `3.0.0` through `CRUB_VERSION`.
 
-CRUB's `platformio.ini` installs the pioarduino `espressif32` platform from its
-floating `stable` release rather than a pinned version. That release now
-requires PlatformIO Core 6.2.0 or newer, and `pio run` from PlatformIO 6.1.x
-fails with `IncompatiblePlatform`. The commands above run PlatformIO 6.2.0
-through [`uv`](https://docs.astral.sh/uv/) with a private core directory, so
-neither a global PlatformIO installation nor its packages for other projects
-change. The first build downloads the ESP-IDF toolchain into that directory.
-Because the platform floats, a rebuild can use a newer Arduino core than an
-earlier CRUB build even at the same pinned commit; keep the full backup until
-the new launcher has booted.
+**Build the bootloader in QIO flash mode.** Upstream CRUB builds its bootloader
+in DIO mode. Arduino applications such as Bruce are built for QIO and then run,
+but they cannot mount LittleFS: Bruce formats `spiffs` yet never mounts it,
+**Files → LittleFS** returns to the main menu, and every setting resets on the
+next boot. On a Cardputer ADV this happened with DIO CRUB bootloaders built on
+the `stable` platform (also after a software restart from Bruce itself, with
+no CRUB run in between) and on `55.03.39`. It did not happen with Bruce's own
+bootloader, even with this exact partition table and Bruce in `extra`, or with
+the QIO CRUB bootloader below. Hub and Codex run normally with the QIO
+bootloader.
+The `sed` command changes only the flash-mode choice; ESP-IDF still writes DIO
+into the bootloader header because the ROM loads the bootloader in DIO before
+the bootloader switches the flash to QIO.
+
+The bootloader uses the pioarduino `55.03.39` platform (ESP-IDF 5.5.4), which
+needs PlatformIO Core 6.1.x. The launcher keeps CRUB's floating `stable`
+platform, which now needs PlatformIO Core 6.2.0 or newer; `pio run` from
+PlatformIO 6.1.x fails there with `IncompatiblePlatform`. Both builds run
+PlatformIO through [`uv`](https://docs.astral.sh/uv/) with private core
+directories, so neither a global PlatformIO installation nor its packages for
+other projects change. The first build downloads each ESP-IDF toolchain.
+Because `stable` floats, a rebuild can use a newer Arduino core than an earlier
+launcher build even at the same pinned commit; keep the full backup until the
+new launcher has booted.
+
+Keep the bootloader's separate `build_dir`: PlatformIO cleans the whole build
+directory when a different project configuration is used, so building both
+into `.pio/build` deletes whichever was built first.
 
 Before writing, check that `.pio/build/m5cardputer/partitions.bin` contains the
 expected `hub`, `extra`, `apps_nvs`, `hub_config`, and `spiffs` offsets, and
 that `.pio/build/m5cardputer/firmware.bin` fits the `test` partition
-(`0xc0000` bytes).
+(`0xc0000` bytes). The QIO bootloader is 22,528 bytes and must end before
+`0x8000`.
 
 Write the bootloader, generated shared table, and launcher using the same port
 that was used for the backup:
@@ -67,7 +106,7 @@ that was used for the backup:
 ```bash
 python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
   --baud 115200 --before default_reset --after hard_reset write_flash -z \
-  0x0 .pio/build/bootloader/bootloader.bin \
+  0x0 .pio/build-qio/bootloader/bootloader.bin \
   0x8000 .pio/build/m5cardputer/partitions.bin \
   0x10000 .pio/build/m5cardputer/firmware.bin
 ```
@@ -155,6 +194,22 @@ partitions to the end of flash. Copying them preserves Hub and Codex settings.
 
 If anything fails, restore the full backup as described under
 [Recovery](#recovery).
+
+## Replace only the bootloader
+
+A device that already runs this layout with upstream CRUB's DIO bootloader
+keeps its applications and settings when only the bootloader changes. Build the
+QIO bootloader as above, enter ROM download mode, and write `0x0` alone:
+
+```bash
+python -m esptool --chip esp32s3 --port /dev/ttyACM0 \
+  --before no_reset --after no_reset write_flash \
+  0x0 .pio/build-qio/bootloader/bootloader.bin
+```
+
+Press Reset: CRUB must start, and **Files → LittleFS** in Bruce must open. The
+first mount may find a filesystem the DIO bootloader left behind; Bruce then
+keeps settings changed from that point on.
 
 ## Updating CRUB
 

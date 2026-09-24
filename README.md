@@ -5,8 +5,8 @@ Host-side firmware bundle manager for an 8 MiB M5Stack Cardputer ADV running
 between [Cardputer Hub](https://github.com/fat23cat/cardputer-hub) and a shared
 `extra` application slot that holds
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
-[Bruce](https://github.com/pr3y/Bruce), or another application, and prepares
-safe app-only updates on a FAT32 microSD card.
+[Bruce](https://github.com/BruceDevices/firmware), or another application, and
+prepares safe app-only updates on a FAT32 microSD card.
 
 The manager does **not** write the Cardputer's internal flash. It validates and
 stages images on the SD card; CRUB performs the final `flash` command on the
@@ -16,7 +16,9 @@ other data partitions.
 ## Requirements
 
 - M5Stack Cardputer ADV with 8 MiB flash and the shared layout from this repo;
-- CRUB revision `669f70b219d2b2cb6fd18e952284eb25b2652d62`;
+- CRUB revision `669f70b219d2b2cb6fd18e952284eb25b2652d62`, with its bootloader
+  built in QIO flash mode as described in
+  [Build CRUB with the shared layout](docs/install-crub.md#build-crub-with-the-shared-layout);
 - FAT32 microSD card mounted through CRUB's `usbsd` command;
 - Python 3.9 or newer;
 - GitHub access when downloading release assets.
@@ -165,7 +167,10 @@ extra
 
 Hub is never affected. Codex keeps its settings in `apps_nvs` and on the SD
 card, so they survive a switch to Bruce and back. Bruce keeps its files on the
-SD card and its internal settings in `spiffs`.
+SD card and its internal settings in `spiffs`. Bruce can mount that LittleFS
+partition only with the QIO CRUB bootloader; with upstream CRUB's DIO
+bootloader, **Files → LittleFS** returns to the main menu and Bruce's settings
+reset on every boot.
 
 CRUB does not report which application is in `extra`, and neither can the
 manager, which only sees the SD card. There is deliberately no `codex` or
