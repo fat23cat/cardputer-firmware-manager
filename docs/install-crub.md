@@ -191,7 +191,7 @@ partitions to the end of flash. Copying them preserves Hub and Codex settings.
 
 8. Stage Hub, Codex, and optionally Bruce with this repository's manager, then
    in CRUB run `sd`, `uphub`, and `upcodex` or `upbruce`. Staging also removes
-   the retired `codex` and `codexfast` aliases. Launch the slot with `extra`.
+   the retired `codex` and `codexfast` aliases. Launch the slot with `go`.
 
 If anything fails, restore the full backup as described under
 [Recovery](#recovery).

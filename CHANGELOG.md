@@ -9,8 +9,9 @@
 - Add Bruce as a release-only application staged into `extra` with `upbruce`,
   pinned by default to the reviewed 1.16.1 release and its SHA-256.
 - Extract the raw application from verified merged release images.
-- Replace the `codex` and `codexfast` aliases with `extra` and `extrafast`, and
-  remove the retired aliases from the SD card while they are unmodified.
+- Replace the `codex` and `codexfast` aliases with `go` and `gofast`, which
+  launch the `extra` slot, and remove retired aliases from the SD card while
+  they are unmodified.
 - Stage only applications with a local build for `local --app all`.
 - Tell the user to flash only one application into a shared partition.
 - Build CRUB with an isolated PlatformIO 6.2.0, which its floating platform

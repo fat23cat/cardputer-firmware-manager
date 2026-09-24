@@ -235,6 +235,8 @@ class StagingTest(unittest.TestCase):
                 "hub\nold command\n"
                 "codex\nlaunch -f codex\n"
                 "codexfast\necho launch -f codex > /.crub/boot\n"
+                "extra\nlaunch -f extra\n"
+                "extrafast\necho launch -f extra > /.crub/boot\n"
             )
             hub = temporary / "hub.bin"
             hub.write_bytes(fake_app())
@@ -252,9 +254,9 @@ class StagingTest(unittest.TestCase):
                     "echo launch -f > /.crub/boot",
                     "crubmenu",
                     "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
-                    "extra",
+                    "go",
                     "launch -f extra",
-                    "extrafast",
+                    "gofast",
                     "echo launch -f extra > /.crub/boot",
                     "uphub",
                     "flash /firmware/cardputer-hub.bin hub",

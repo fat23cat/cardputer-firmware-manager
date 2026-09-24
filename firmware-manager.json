@@ -20,12 +20,14 @@
     {"name": "coredump", "type": "data", "subtype": "coredump", "offset": 8323072, "size": 65536}
   ],
   "aliases": {
-    "extra": "launch -f extra",
-    "extrafast": "echo launch -f extra > /.crub/boot"
+    "go": "launch -f extra",
+    "gofast": "echo launch -f extra > /.crub/boot"
   },
   "retired_aliases": {
     "codex": "launch -f codex",
-    "codexfast": "echo launch -f codex > /.crub/boot"
+    "codexfast": "echo launch -f codex > /.crub/boot",
+    "extra": "launch -f extra",
+    "extrafast": "echo launch -f extra > /.crub/boot"
   },
   "apps": {
     "hub": {

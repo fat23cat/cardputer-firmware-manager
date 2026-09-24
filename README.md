@@ -147,7 +147,7 @@ After staging:
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
 4. Run `uphub` to update Hub, and `upcodex` or `upbruce` to fill `extra`.
 5. Wait for `app: ok` and `flash complete` after every command.
-6. Launch Hub with `hub`, or the application in the shared slot with `extra`.
+6. Launch Hub with `hub`, or the application in the shared slot with `go`.
 
 CRUB treats `&&` as an unconditional separator, so update aliases never chain
 an automatic launch.
@@ -159,10 +159,10 @@ card, so switching only rewrites the slot:
 
 ```text
 upcodex     # Codex into extra
-extra       # launch it
+go          # launch it
 
 upbruce     # later: replace Codex with Bruce
-extra
+go
 ```
 
 Hub is never affected. Codex keeps its settings in `apps_nvs` and on the SD
@@ -183,7 +183,7 @@ from overwriting Bruce's `spiffs` partition:
 
 ```text
 flash /firmware/Other.bin extra -nospiffs
-extra
+go
 ```
 
 The manager does not check such images: confirm the SHA-256 yourself and keep
@@ -193,7 +193,7 @@ them within the 4.75 MiB slot.
 
 CRUB normally initializes its USB mass-storage device before an application is
 launched. If an application's USB Serial/JTAG console does not enumerate after
-the `hub` or `extra` alias, run:
+the `hub` or `go` alias, run:
 
 ```text
 hubfast
@@ -202,11 +202,11 @@ hubfast
 or
 
 ```text
-extrafast
+gofast
 ```
 
 Then reset the Cardputer. `hubfast` replaces `/.crub/boot` with `launch -f`;
-`extrafast` replaces it with `launch -f extra` (`extra` is not CRUB's default
+`gofast` replaces it with `launch -f extra` (`extra` is not CRUB's default
 boot partition, so it must be named explicitly). Either way, the target app
 starts before CRUB initializes USB and continues to start automatically on
 later resets.
@@ -236,8 +236,8 @@ Before writing to the SD card, the manager:
 - verifies GitHub's asset digest or a published checksum asset, and the
   catalog's pinned SHA-256 when it downloads a pinned release;
 - merges its eight aliases without deleting unrelated user aliases, and removes
-  the retired `codex` and `codexfast` aliases only while they still hold their
-  original managed commands;
+  the retired `codex`, `codexfast`, `extra`, and `extrafast` aliases only while
+  they still hold their original managed commands;
 - preserves firmware for applications that were not selected;
 - writes `firmware/SHA256SUMS` and `firmware/firmware-manager-lock.json`.
 
