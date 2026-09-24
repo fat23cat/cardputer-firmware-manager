@@ -168,19 +168,20 @@ partitions to the end of flash. Copying them preserves Hub and Codex settings.
 
 4. [Build CRUB with the shared layout](#build-crub-with-the-shared-layout) from
    this revision of the repository.
-5. Write the new table, the rebuilt launcher, and both settings partitions at
-   their new offsets. The bootloader does not change:
+5. Write the QIO bootloader, the new table, the rebuilt launcher, and both
+   settings partitions at their new offsets:
 
    ```bash
    python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
      --baud 115200 --before default_reset --after hard_reset write_flash -z \
+     0x0 .pio/build-qio/bootloader/bootloader.bin \
      0x8000 .pio/build/m5cardputer/partitions.bin \
      0x10000 .pio/build/m5cardputer/firmware.bin \
      0x790000 apps_nvs.bin \
      0x7a0000 hub_config.bin
    ```
 
-6. Verify the four written ranges with `esptool verify_flash`.
+6. Verify the five written ranges with `esptool verify_flash`.
 7. Boot CRUB and clear the new `spiffs` range, which holds leftovers from the
    old one. Do not erase `nvs`, `apps_nvs`, or `hub_config`:
 
