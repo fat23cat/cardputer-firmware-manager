@@ -13,12 +13,20 @@ procedure does not write eFuses, enable Secure Boot, or enable Flash Encryption.
 
 ## Back up the complete device
 
-Enter ROM download mode, identify the exact serial port, and read all 8 MiB:
+Enter ROM download mode: hold `G0`, press and release Reset, then release
+`G0`. The screen stays dark and the ROM's USB-Serial/JTAG port appears, for
+example `/dev/cu.usbmodem101` on macOS. Identify the exact serial port and read
+all 8 MiB:
 
 ```bash
 python -m esptool --chip esp32s3 --port /dev/ttyACM0 \
   --no-stub read_flash 0x0 0x800000 cardputer-adv-backup.bin
 ```
+
+Reading is slow over USB-Serial/JTAG: a Cardputer ADV read all 8 MiB at about
+92 kbit/s, roughly 12 minutes, even with esptool's flasher stub. esptool writes
+the file only when the read finishes, so keep its progress output visible
+rather than treating a quiet terminal as a hang.
 
 Keep at least one verified copy outside the device's microSD card.
 
@@ -29,12 +37,29 @@ git clone https://github.com/wisnc/crub.git
 cd crub
 git checkout 669f70b219d2b2cb6fd18e952284eb25b2652d62
 cp /path/to/cardputer-firmware-manager/layouts/cardputer-adv-8mb.csv partitions.csv
-pio run -e bootloader
-pio run -e m5cardputer
+export PLATFORMIO_CORE_DIR="$PWD/.platformio-core"
+uvx --from platformio==6.2.0 pio run -e bootloader
+uvx --from platformio==6.2.0 pio run -e m5cardputer
 ```
 
 The pinned upstream commit is titled `3.0.1`, although its source still reports
 `3.0.0` through `CRUB_VERSION`.
+
+CRUB's `platformio.ini` installs the pioarduino `espressif32` platform from its
+floating `stable` release rather than a pinned version. That release now
+requires PlatformIO Core 6.2.0 or newer, and `pio run` from PlatformIO 6.1.x
+fails with `IncompatiblePlatform`. The commands above run PlatformIO 6.2.0
+through [`uv`](https://docs.astral.sh/uv/) with a private core directory, so
+neither a global PlatformIO installation nor its packages for other projects
+change. The first build downloads the ESP-IDF toolchain into that directory.
+Because the platform floats, a rebuild can use a newer Arduino core than an
+earlier CRUB build even at the same pinned commit; keep the full backup until
+the new launcher has booted.
+
+Before writing, check that `.pio/build/m5cardputer/partitions.bin` contains the
+expected `hub`, `extra`, `apps_nvs`, `hub_config`, and `spiffs` offsets, and
+that `.pio/build/m5cardputer/firmware.bin` fits the `test` partition
+(`0xc0000` bytes).
 
 Write the bootloader, generated shared table, and launcher using the same port
 that was used for the backup:
@@ -49,13 +74,20 @@ python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
 
 Verify the three written ranges with `esptool verify_flash` before continuing.
 
-The first migration intentionally discards settings. In CRUB, initialize the
-three NVS partitions:
+The automatic reset at the end of an esptool command over USB-Serial/JTAG can
+leave the Cardputer with a dark screen instead of starting CRUB. Press and
+release Reset once; CRUB should then start. Check the table from CRUB with
+`pt info`, and never run `pt write` or `pt reset` there.
+
+The first installation intentionally discards settings. In CRUB, initialize the
+three NVS partitions and clear leftovers from any earlier layout in Bruce's
+`spiffs` partition:
 
 ```text
 erase nvs
 erase apps_nvs
 erase hub_config
+erase spiffs
 ```
 
 Do not repeat those commands during normal application updates.

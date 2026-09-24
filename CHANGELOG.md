@@ -13,6 +13,9 @@
   remove the retired aliases from the SD card while they are unmodified.
 - Stage only applications with a local build for `local --app all`.
 - Tell the user to flash only one application into a shared partition.
+- Build CRUB with an isolated PlatformIO 6.2.0, which its floating platform
+  now requires, and document slow USB backups, the dark screen after an
+  esptool reset, and clearing `spiffs` on a first installation.
 
 - Validate every critical CRUB, application, and persistence partition against
   the catalog contract before accepting the shared layout.
