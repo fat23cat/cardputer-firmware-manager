@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Shrink `hub` to 2 MiB and replace the dedicated `codex` partition with a
+  4.75 MiB shared `extra` slot for Codex, Bruce, or another application. Move
+  `apps_nvs` and `hub_config` to `0x790000` and `0x7a0000`, drop `vfs`, shrink
+  `spiffs` to 128 KiB, and document the one-time USB migration.
+- Add Bruce as a release-only application staged into `extra` with `upbruce`,
+  pinned by default to the reviewed 1.16.1 release and its SHA-256.
+- Extract the raw application from verified merged release images.
+- Replace the `codex` and `codexfast` aliases with `go` and `gofast`, which
+  launch the `extra` slot, and remove retired aliases from the SD card while
+  they are unmodified.
+- Stage only applications with a local build for `local --app all`.
+- Tell the user to flash only one application into a shared partition.
+- Build CRUB with an isolated PlatformIO 6.2.0, which its floating platform
+  now requires, and document slow USB backups, the dark screen after an
+  esptool reset, and clearing `spiffs` on a first installation.
+- Build the CRUB bootloader in QIO flash mode on the pinned pioarduino
+  `55.03.39` platform, because Bruce cannot mount LittleFS and loses its
+  settings under upstream CRUB's DIO bootloader, and document replacing only
+  the bootloader on an existing installation.
+- Follow Bruce's move from `pr3y/Bruce` to `BruceDevices/firmware`.
 - Validate every critical CRUB, application, and persistence partition against
   the catalog contract before accepting the shared layout.
 - Require a mounted SD root, contain catalog paths inside it, verify copies

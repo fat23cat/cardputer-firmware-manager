@@ -109,11 +109,19 @@ def _tag_map(values: List[str], selected: List[str]) -> Dict[str, str]:
     return result
 
 
-def _print_staged(selected: List[str]) -> None:
+def _print_staged(catalog: Mapping[str, Any], selected: List[str]) -> None:
     print("staged successfully; safely eject the card and exit CRUB usbsd")
     print("remount the card in CRUB with 'sd', then run:")
+    by_partition: Dict[str, List[str]] = {}
     for app_id in selected:
-        print(f"  up{app_id}")
+        by_partition.setdefault(catalog["apps"][app_id]["partition"], []).append(
+            app_id
+        )
+    for partition, app_ids in by_partition.items():
+        commands = " or ".join(f"up{app_id}" for app_id in app_ids)
+        if len(app_ids) > 1:
+            commands += f" (shared partition {partition}; flash only one)"
+        print(f"  {commands}")
 
 
 def _doctor(
@@ -242,11 +250,21 @@ def run(arguments: Optional[List[str]] = None) -> int:
 
     selected = resolve_apps(catalog, args.app)
     if args.command == "local":
+        if args.app in ([], ["all"]):
+            selected = [
+                app_id
+                for app_id in selected
+                if "local_image" in catalog["apps"][app_id]
+            ]
         workspace = args.workspace.expanduser().resolve()
         images: Dict[str, Path] = {}
         sources: Dict[str, Dict[str, str]] = {}
         for app_id in selected:
             app = catalog["apps"][app_id]
+            if "local_image" not in app:
+                raise FirmwareError(
+                    f"{app_id}: no local build; stage it with 'release'"
+                )
             repository = workspace / app["local_repository"]
             if not repository.is_dir():
                 raise FirmwareError(
@@ -257,7 +275,7 @@ def run(arguments: Optional[List[str]] = None) -> int:
             images[app_id] = repository / app["local_image"]
             sources[app_id] = {"source": "local", "repository": str(repository)}
         stage_images(catalog, images, args.sd, sources)
-        _print_staged(selected)
+        _print_staged(catalog, selected)
         return 0
 
     if args.command == "release":
@@ -281,7 +299,7 @@ def run(arguments: Optional[List[str]] = None) -> int:
                 }
                 print(f"downloaded {app_id} {tag}")
             stage_images(catalog, images, args.sd, sources)
-        _print_staged(selected)
+        _print_staged(catalog, selected)
         return 0
     raise FirmwareError(f"unsupported command: {args.command}")
 
