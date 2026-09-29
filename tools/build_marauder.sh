@@ -24,8 +24,10 @@ if [[ "$actual_commit" != "$source_commit" ]]; then
   exit 1
 fi
 git -C "$source_dir" reset --hard "$source_commit" >/dev/null
-git -C "$source_dir" apply --check "$project_dir/tools/marauder-crub.patch"
-git -C "$source_dir" apply "$project_dir/tools/marauder-crub.patch"
+git -C "$source_dir" apply --unidiff-zero --check "$project_dir/tools/marauder-crub.patch"
+git -C "$source_dir" apply --unidiff-zero "$project_dir/tools/marauder-crub.patch"
+cp "$project_dir/tools/marauder_ble_lifecycle.h" \
+  "$source_dir/esp32_marauder/marauder_ble_lifecycle.h"
 
 libraries="$work_dir/libraries"
 if [[ -n "${MARAUDER_LIBRARIES_DIR:-}" ]]; then

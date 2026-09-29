@@ -14,7 +14,9 @@ updater. Its OTA updater would otherwise select Hub as the next app partition.
 The build also gives Marauder's Bluetooth bonds and backlight preference
 separate namespaces in the existing default NVS partition. It checks stored
 Bluetooth record sizes and never erases the shared NVS while initializing
-NimBLE.
+NimBLE. It also avoids calling BLE stop methods after a spam iteration has
+already deinitialized NimBLE; that caused a Cardputer ADV reboot when leaving
+`BLE Spam All`.
 
 ## Build the application
 
@@ -33,7 +35,9 @@ arduino-cli core install esp32:esp32@2.0.11 --additional-urls \
 The script checks upstream commit `8ae4622abcc9c9c5729d4e97491907581d7f0c34`,
 applies `tools/marauder-crub.patch`, fetches the library versions used by its
 upstream CI, applies `tools/nimble-crub.patch`, and builds `dist/Marauder.bin`
-and `dist/Marauder.elf`. It checks the application size, ESP project name,
+and `dist/Marauder.elf`. The build includes
+`tools/marauder_ble_lifecycle.h` to guard BLE shutdown. It checks the
+application size, ESP project name,
 and embedded `marauder_fs` and `marauder_bond` labels. This step touches only the
 host computer. `local --app all` continues to select Hub and Codex; select
 Marauder explicitly.

@@ -114,3 +114,33 @@ index dde5c66..63dcff6 100644
      return false;
    }
  
+diff --git a/esp32_marauder/WiFiScan.cpp b/esp32_marauder/WiFiScan.cpp
+index 5540f2b..fb127d2 100644
+--- a/esp32_marauder/WiFiScan.cpp
++++ b/esp32_marauder/WiFiScan.cpp
+@@ -8,0 +9,3 @@
++#ifdef CRUB_SHARED_EXTRA
++  #include "marauder_ble_lifecycle.h"
++#endif
+@@ -2958,0 +2962,3 @@ bool WiFiScan::shutdownBLE() {
++      #ifdef CRUB_SHARED_EXTRA
++      crubShutdownBle<NimBLEDevice>(pAdvertising, pBLEScan, []() { delay(100); });
++      #else
+@@ -2967,0 +2974 @@ bool WiFiScan::shutdownBLE() {
++      #endif
+@@ -5745,0 +5753,3 @@ void WiFiScan::executeBLESpam(EBLEPayloadType type) {
++      #ifdef CRUB_SHARED_EXTRA
++        pAdvertising = nullptr;
++      #endif
+@@ -5775,0 +5786,3 @@ void WiFiScan::executeBLESpam(EBLEPayloadType type) {
++        #ifdef CRUB_SHARED_EXTRA
++          pAdvertising = nullptr;
++        #endif
+@@ -5809,0 +5823,3 @@ void WiFiScan::executeBLESpam(EBLEPayloadType type) {
++            #ifdef CRUB_SHARED_EXTRA
++              pAdvertising = nullptr;
++            #endif
+@@ -5839,0 +5856,3 @@ void WiFiScan::executeBLESpam(EBLEPayloadType type) {
++      #ifdef CRUB_SHARED_EXTRA
++        pAdvertising = nullptr;
++      #endif
