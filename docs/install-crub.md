@@ -35,7 +35,7 @@ Keep at least one verified copy outside the device's microSD card.
 ```bash
 git clone https://github.com/wisnc/crub.git
 cd crub
-git checkout 669f70b219d2b2cb6fd18e952284eb25b2652d62
+git checkout 7819bb27c2a3e29529255fc848562f0b7d071c36
 cp /path/to/cardputer-firmware-manager/layouts/cardputer-adv-8mb.csv partitions.csv
 
 # Bootloader: QIO flash mode, pinned platform, separate build directory.
@@ -62,8 +62,8 @@ PLATFORMIO_CORE_DIR="$PWD/.platformio-core" \
   uvx --from platformio==6.2.0 pio run -e m5cardputer
 ```
 
-The pinned upstream commit is titled `3.0.1`, although its source still reports
-`3.0.0` through `CRUB_VERSION`.
+The pinned upstream commit is the `3.1.0` release and reports `3.1.0` through
+`CRUB_VERSION`.
 
 **Build the bootloader in QIO flash mode.** Upstream CRUB builds its bootloader
 in DIO mode. Arduino applications such as Bruce are built for QIO and then run,
@@ -218,6 +218,47 @@ Never flash CRUB's stock `partitions.bin` after adopting this layout. Rebuild
 every reviewed CRUB revision with `layouts/cardputer-adv-8mb.csv`, verify that
 the launcher image fits the `test` partition (`0xc0000` bytes), and retain a
 full backup. A routine `local` or `release` command cannot update CRUB.
+
+For an existing installation with this shared layout and the QIO bootloader,
+update to the pinned 3.1.0 revision without replacing the bootloader or
+partition table:
+
+1. [Back up the complete device](#back-up-the-complete-device). Confirm that
+   the file is exactly 8,388,608 bytes and keep it outside the Cardputer SD.
+2. [Build CRUB with the shared layout](#build-crub-with-the-shared-layout).
+   The `firmware.bin` asset attached to the upstream 3.1.0 release is shown as
+   about 794 KB, larger than this layout's 768 KiB `test` partition. Do not
+   flash that release asset. A local build on 2026-09-29 using pioarduino
+   `stable` 55.3.312 produced a 753,760-byte launcher.
+3. Check the size of the newly built launcher before writing:
+
+   ```bash
+   python - <<'PY'
+   from pathlib import Path
+   image = Path('.pio/build/m5cardputer/firmware.bin')
+   size = image.stat().st_size
+   print(f'CRUB launcher: {size} / 786432 bytes')
+   if size > 0xc0000:
+       raise SystemExit('launcher exceeds the test partition; do not flash')
+   PY
+   ```
+
+4. Enter ROM download mode and write only the launcher at `0x10000`, using the
+   same port as the backup:
+
+   ```bash
+   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
+     --baud 115200 --before default_reset --after hard_reset write_flash -z \
+     0x10000 .pio/build/m5cardputer/firmware.bin
+   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
+     verify_flash 0x10000 .pio/build/m5cardputer/firmware.bin
+   ```
+
+5. Press Reset if the screen stays dark. In CRUB, run `fetch` to check that
+   the version is 3.1.0 and `pt info` to inspect the unchanged layout. Launch
+   Hub and the application in `extra` to check them. Keep the SD card's
+   `/.crub/` directory; 3.1.0 stores its configuration and saved IR codes
+   there.
 
 ## Recovery
 

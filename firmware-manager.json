@@ -5,7 +5,7 @@
   "layout": "layouts/cardputer-adv-8mb.csv",
   "crub": {
     "repository": "wisnc/crub",
-    "revision": "669f70b219d2b2cb6fd18e952284eb25b2652d62",
+    "revision": "7819bb27c2a3e29529255fc848562f0b7d071c36",
     "launcher_partition": "test"
   },
   "partition_contract": [
