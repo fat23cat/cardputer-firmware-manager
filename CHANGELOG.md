@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Update the pinned CRUB launcher to 3.1.0 and document an application-only
+  USB update that preserves the QIO bootloader, shared layout, and other apps.
+  The upstream release binary exceeds the 768 KiB launcher partition, so the
+  documented update checks a rebuild against that partition before writing.
 - Shrink `hub` to 2 MiB and replace the dedicated `codex` partition with a
   4.75 MiB shared `extra` slot for Codex, Bruce, or another application. Move
   `apps_nvs` and `hub_config` to `0x790000` and `0x7a0000`, drop `vfs`, shrink

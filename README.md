@@ -16,8 +16,8 @@ other data partitions.
 ## Requirements
 
 - M5Stack Cardputer ADV with 8 MiB flash and the shared layout from this repo;
-- CRUB revision `669f70b219d2b2cb6fd18e952284eb25b2652d62`, with its bootloader
-  built in QIO flash mode as described in
+- CRUB 3.1.0 (revision `7819bb27c2a3e29529255fc848562f0b7d071c36`)
+  with a QIO CRUB bootloader as described in
   [Build CRUB with the shared layout](docs/install-crub.md#build-crub-with-the-shared-layout);
 - FAT32 microSD card mounted through CRUB's `usbsd` command;
 - Python 3.9 or newer;
