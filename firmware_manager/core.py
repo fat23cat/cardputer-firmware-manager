@@ -52,7 +52,6 @@ def load_catalog(path: Path) -> Dict[str, Any]:
     for app_id, app in catalog["apps"].items():
         required = {
             "repository",
-            "release_asset",
             "partition",
             "partition_size",
             "project_name",
@@ -65,6 +64,8 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             missing.update(local_fields.difference(app))
         if missing:
             raise FirmwareError(f"{app_id}: missing catalog fields: {', '.join(sorted(missing))}")
+        if "release_asset" not in app and "local_image" not in app:
+            raise FirmwareError(f"{app_id}: no local image or release asset")
         if app.get("release_image", "app") not in {"app", "merged"}:
             raise FirmwareError(f"{app_id}: invalid release image format")
         if "release_pin" in app:
@@ -95,6 +96,11 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             raise FirmwareError(f"{app_id}: invalid ESP project name") from error
         if not project_name or len(project_name) > ESP_APP_PROJECT_NAME_SIZE:
             raise FirmwareError(f"{app_id}: invalid ESP project name")
+        marker = app.get("required_image_marker")
+        if marker is not None and (
+            not isinstance(marker, str) or not marker or not marker.isascii()
+        ):
+            raise FirmwareError(f"{app_id}: invalid required image marker")
     return catalog
 
 
@@ -194,6 +200,7 @@ def validate_image(
     image: Path,
     partition_size: int,
     expected_project_name: str,
+    required_marker: Optional[str] = None,
 ) -> None:
     if not image.is_file():
         raise FirmwareError(f"{app_id}: image does not exist: {image}")
@@ -218,6 +225,8 @@ def validate_image(
         raise FirmwareError(
             f"{app_id}: image is {image_size} bytes; partition limit is {partition_size}"
         )
+    if required_marker and required_marker.encode("ascii") not in image.read_bytes():
+        raise FirmwareError(f"{app_id}: required image marker is missing")
 
 
 def _esp_image_length(image: bytes) -> Optional[int]:
@@ -354,6 +363,7 @@ def stage_images(
             image,
             app["partition_size"],
             app["project_name"],
+            app.get("required_image_marker"),
         )
         source_digests[app_id] = sha256(image)
 

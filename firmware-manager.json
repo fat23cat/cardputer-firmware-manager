@@ -17,6 +17,7 @@
     {"name": "apps_nvs", "type": "data", "subtype": "nvs", "offset": 7929856, "size": 65536},
     {"name": "hub_config", "type": "data", "subtype": "nvs", "offset": 7995392, "size": 65536},
     {"name": "spiffs", "type": "data", "subtype": "spiffs", "offset": 8060928, "size": 131072},
+    {"name": "marauder_fs", "type": "data", "subtype": "spiffs", "offset": 8192000, "size": 131072},
     {"name": "coredump", "type": "data", "subtype": "coredump", "offset": 8323072, "size": 65536}
   ],
   "aliases": {
@@ -102,6 +103,23 @@
       "sd_path": "firmware/Bruce.bin",
       "aliases": {
         "upbruce": "flash /firmware/Bruce.bin extra"
+      }
+    },
+    "marauder": {
+      "name": "ESP32 Marauder for Cardputer ADV (isolated)",
+      "repository": "justcallmekoko/ESP32Marauder",
+      "source_revision": "8ae4622abcc9c9c5729d4e97491907581d7f0c34",
+      "local_repository": "cardputer-firmware-manager",
+      "build_command": ["./tools/build_marauder.sh"],
+      "local_image": "dist/Marauder.bin",
+      "default_local": false,
+      "partition": "extra",
+      "partition_size": 4980736,
+      "project_name": "arduino-lib-builder",
+      "required_image_marker": "marauder_fs",
+      "sd_path": "firmware/Marauder.bin",
+      "aliases": {
+        "upmarauder": "flash /firmware/Marauder.bin extra"
       }
     }
   }

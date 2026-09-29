@@ -1,0 +1,99 @@
+diff --git a/esp32_marauder/CommandLine.cpp b/esp32_marauder/CommandLine.cpp
+index 45f54f3..f308b96 100644
+--- a/esp32_marauder/CommandLine.cpp
++++ b/esp32_marauder/CommandLine.cpp
+@@ -1479,6 +1479,9 @@ void CommandLine::runCommand(String input) {
+ 
+     // Update command
+     if (cmd_args.get(0) == UPDATE_CMD) {
++      #ifdef CRUB_SHARED_EXTRA
++      Serial.println(F("Firmware update disabled; use CRUB upmarauder"));
++      #else
+       int sd_sw = this->argSearch(&cmd_args, "-s"); // SD Update
+       if (sd_sw != -1) {
+         #ifdef HAS_SD
+@@ -1490,6 +1493,7 @@ void CommandLine::runCommand(String input) {
+           sd_obj.runUpdate();
+         #endif
+       }
++      #endif
+     }
+   }
+ 
+diff --git a/esp32_marauder/MenuFunctions.cpp b/esp32_marauder/MenuFunctions.cpp
+index da0ac51..a16c4e0 100644
+--- a/esp32_marauder/MenuFunctions.cpp
++++ b/esp32_marauder/MenuFunctions.cpp
+@@ -3656,6 +3656,7 @@ void MenuFunctions::RunSetup()
+ 
+       sdDeleteMenu.parentMenu = &deviceMenu;
+ 
++      #ifndef CRUB_SHARED_EXTRA
+       this->addNodes(&deviceMenu, "Update Firmware", TFTORANGE, SD_UPDATE, [this]() {
+         display_obj.clearScreen();
+         display_obj.tft.setTextWrap(false);
+@@ -3668,6 +3669,7 @@ void MenuFunctions::RunSetup()
+ 
+         this->changeMenu(&sdDeleteMenu, true);
+       });
++      #endif
+ 
+       this->addNodes(&deviceMenu, "Backup SPIFFS", TFTGREEN, SD_UPDATE, [this]() {
+         cli_obj.runCommand(BACKUP_SPIFFS_CMD);
+diff --git a/esp32_marauder/SDInterface.cpp b/esp32_marauder/SDInterface.cpp
+index 8b89a2b..d93ccbb 100644
+--- a/esp32_marauder/SDInterface.cpp
++++ b/esp32_marauder/SDInterface.cpp
+@@ -384,6 +384,11 @@ void SDInterface::listDir(String str_dir){
+ }
+ 
+ void SDInterface::runUpdate(String file_name) {
++  #ifdef CRUB_SHARED_EXTRA
++  // Arduino Update targets the next OTA slot, which is Hub on the CRUB layout.
++  Serial.println(F("Firmware update disabled; use CRUB upmarauder"));
++  return;
++  #else
+   if (file_name == "")
+     file_name = "/update.bin";
+ 
+@@ -473,6 +478,7 @@ void SDInterface::runUpdate(String file_name) {
+       display_obj.tft.setTextColor(TFT_WHITE);
+     #endif
+   }
++  #endif
+ }
+ 
+ bool SDInterface::validateUpdate(File &updateBin) {
+@@ -537,6 +543,9 @@ bool SDInterface::validateUpdate(File &updateBin) {
+ }
+ 
+ bool SDInterface::performUpdate(Stream &updateSource, size_t updateSize) {
++  #ifdef CRUB_SHARED_EXTRA
++  return false;
++  #else
+   if (Update.begin(updateSize)) {   
+     #ifdef HAS_SCREEN
+       display_obj.tft.println(text_table2[5] + String(updateSize));
+@@ -597,4 +606,5 @@ bool SDInterface::performUpdate(Stream &updateSource, size_t updateSize) {
+     Serial.println(F("Not enough space to begin OTA"));
+     return false;
+   }
++  #endif
+ }
+diff --git a/esp32_marauder/settings.cpp b/esp32_marauder/settings.cpp
+index dde5c66..63dcff6 100644
+--- a/esp32_marauder/settings.cpp
++++ b/esp32_marauder/settings.cpp
+@@ -106,7 +106,12 @@ void Settings::_buildCache() {
+ String Settings::getSettingsString() { return this->json_settings_string; }
+ 
+ bool Settings::begin() {
++  #ifdef CRUB_SHARED_EXTRA
++  // Bruce owns the default spiffs partition. Never mount or format it here.
++  if (!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED, "/spiffs", 10, "marauder_fs")) {
++  #else
+   if (!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)) {
++  #endif
+     return false;
+   }
+ 

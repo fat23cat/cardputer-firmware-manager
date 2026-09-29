@@ -1,6 +1,6 @@
 # Cardputer Hub + shared extra slot layout for crub on 8 MiB flash.
 # extra holds one of Codex Microputer ADV, Bruce, or another app at a time.
-# 0x7d0000-0x7effff is intentionally unallocated for a future vfs partition.
+# marauder_fs uses the former 0x7d0000-0x7effff reserved area.
 # Name,      Type, SubType, Offset,   Size,     Flags
 nvs,         data, nvs,     0x9000,   0x5000,
 otadata,     data, ota,     0xe000,   0x2000,
@@ -10,4 +10,5 @@ extra,       app,  ota_1,   0x2d0000, 0x4c0000,
 apps_nvs,    data, nvs,     0x790000, 0x10000,
 hub_config,  data, nvs,     0x7a0000, 0x10000,
 spiffs,      data, spiffs,  0x7b0000, 0x20000,
+marauder_fs, data, spiffs,  0x7d0000, 0x20000,
 coredump,    data, coredump,0x7f0000, 0x10000,

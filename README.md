@@ -5,7 +5,9 @@ Host-side firmware bundle manager for an 8 MiB M5Stack Cardputer ADV running
 between [Cardputer Hub](https://github.com/fat23cat/cardputer-hub) and a shared
 `extra` application slot that holds
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
-[Bruce](https://github.com/BruceDevices/firmware), or another application, and
+[Bruce](https://github.com/BruceDevices/firmware),
+[ESP32 Marauder](https://github.com/justcallmekoko/ESP32Marauder), or another
+application, and
 prepares safe app-only updates on a FAT32 microSD card.
 
 The manager does **not** write the Cardputer's internal flash. It validates and
@@ -35,13 +37,16 @@ dedicated `codex` partition, must be migrated once over USB. See
 |---|---|---|---|
 | `test` | `0x10000` | 768 KiB | CRUB |
 | `hub` | `0xd0000` | 2 MiB | Cardputer Hub |
-| `extra` | `0x2d0000` | 4.75 MiB | Codex, Bruce, or another app, one at a time |
+| `extra` | `0x2d0000` | 4.75 MiB | Codex, Bruce, or Marauder, one at a time |
 | `apps_nvs` | `0x790000` | 64 KiB | Codex settings |
 | `hub_config` | `0x7a0000` | 64 KiB | Hub settings |
 | `spiffs` | `0x7b0000` | 128 KiB | Bruce LittleFS |
+| `marauder_fs` | `0x7d0000` | 128 KiB | Marauder SPIFFS settings |
 
-`0x7d0000-0x7effff` is intentionally unallocated so a `vfs` partition can be
-added later without moving anything.
+The existing application offsets and Bruce's `spiffs` partition are unchanged.
+The former reserved range at `0x7d0000-0x7effff` now holds Marauder settings.
+An existing device needs the one-time table update in
+[Install Marauder](docs/install-marauder.md) before launching this build.
 
 ## Quick start
 
@@ -70,8 +75,9 @@ python3 -m firmware_manager local \
   --sd /Volumes/CARDPUTER
 ```
 
-`local --app all` selects Hub and Codex. Bruce has no local build and is
-staged with `release`.
+`local --app all` selects Hub and Codex. Marauder requires its isolated build
+and is selected explicitly; Bruce has no local build and is staged with
+`release`.
 
 Add `--build` to build each selected repository first:
 
@@ -92,6 +98,12 @@ python3 -m firmware_manager local --app hub --sd /Volumes/CARDPUTER
 python3 -m firmware_manager local --app codex --sd /Volumes/CARDPUTER
 ```
 
+After preparing the Marauder partition table, build and stage the isolated
+Marauder image with `local --app marauder --build`. Follow
+[Install Marauder](docs/install-marauder.md) for the build tools and one-time
+device migration. The official Marauder release image must not be used with
+this layout because it formats Bruce's default `spiffs` partition.
+
 ## GitHub Releases
 
 Download the latest published release for one application:
@@ -108,7 +120,8 @@ python3 -m firmware_manager release --app hub \
   --tag hub=v0.11.0 --sd /Volumes/CARDPUTER
 ```
 
-For all applications, omit `--app` or pass `--app all`. Independent versions
+For all published applications, omit `--app` or pass `--app all`. Marauder has
+only a local isolated build; its official release is excluded. Independent versions
 can be pinned by repeating `--tag`:
 
 ```bash
@@ -145,7 +158,7 @@ After staging:
 1. Safely eject the SD volume from the computer.
 2. Press any Cardputer key to exit `usbsd`.
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
-4. Run `uphub` to update Hub, and `upcodex` or `upbruce` to fill `extra`.
+4. Run `uphub` to update Hub, and `upcodex`, `upbruce`, or `upmarauder` to fill `extra`.
 5. Wait for `app: ok` and `flash complete` after every command.
 6. Launch Hub with `hub`, or the application in the shared slot with `go`.
 
@@ -163,6 +176,9 @@ go          # launch it
 
 upbruce     # later: replace Codex with Bruce
 go
+
+upmarauder  # later: replace Bruce with isolated Marauder
+go
 ```
 
 Hub is never affected. Codex keeps its settings in `apps_nvs` and on the SD
@@ -172,9 +188,15 @@ partition only with the QIO CRUB bootloader; with upstream CRUB's DIO
 bootloader, **Files → LittleFS** returns to the main menu and Bruce's settings
 reset on every boot.
 
+The isolated Marauder build keeps its settings in `marauder_fs`. Its built-in
+firmware updater is disabled because the next OTA slot is Hub. Use CRUB's
+`upmarauder` command for later Marauder updates. The manager checks for the
+`marauder_fs` image marker before staging this build, but local builds are not
+authenticated releases; build from the pinned source and patch in this repo.
+
 CRUB does not report which application is in `extra`, and neither can the
 manager, which only sees the SD card. There is deliberately no `codex` or
-`bruce` launch alias, because it would silently start whichever application
+`bruce` or `marauder` launch alias, because it would silently start whichever application
 the slot holds.
 
 An application that is not in the catalog can be flashed into the slot by
