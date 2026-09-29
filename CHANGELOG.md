@@ -4,7 +4,8 @@
 
 - Add a local isolated ESP32 Marauder 1.17.0 build for Cardputer ADV in the
   shared `extra` slot. Give it a dedicated 128 KiB `marauder_fs` partition,
-  disable its updater on the CRUB layout, and provide a guarded one-time table
+  isolate its Bluetooth and backlight NVS namespaces, reject malformed stored
+  Bluetooth records, disable its updater on the CRUB layout, and provide a guarded one-time table
   preparation tool that verifies a full backup and the unused flash range.
 - Reject unisolated Marauder images before SD staging and preserve the default
   `local --app all` and published `release --app all` selections.

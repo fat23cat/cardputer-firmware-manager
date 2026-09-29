@@ -139,6 +139,7 @@ class CatalogTest(unittest.TestCase):
         })
         self.assertEqual(by_name["spiffs"]["offset"], 0x7B0000)
         self.assertNotIn("release_asset", marauder)
+        self.assertEqual(marauder["required_image_marker"], "marauder_bond")
 
     def test_local_only_application_is_not_downloaded_by_release_all(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -335,7 +336,7 @@ class StagingTest(unittest.TestCase):
             bruce.parent.mkdir()
             bruce.write_bytes(fake_app(b"Bruce", "arduino-lib-builder"))
             marauder = root / "Marauder.bin"
-            marauder.write_bytes(fake_app(b"Marauder marauder_fs", "arduino-lib-builder"))
+            marauder.write_bytes(fake_app(b"Marauder marauder_fs marauder_bond", "arduino-lib-builder"))
 
             stage_images(self.catalog, {"marauder": marauder}, sd,
                          require_mount=False)
@@ -351,7 +352,7 @@ class StagingTest(unittest.TestCase):
             sd = root / "card"
             sd.mkdir()
             image = root / "official.bin"
-            image.write_bytes(fake_app(b"ordinary Marauder", "arduino-lib-builder"))
+            image.write_bytes(fake_app(b"ordinary Marauder marauder_fs", "arduino-lib-builder"))
             with self.assertRaisesRegex(FirmwareError, "required image marker"):
                 stage_images(self.catalog, {"marauder": image}, sd,
                              require_mount=False)

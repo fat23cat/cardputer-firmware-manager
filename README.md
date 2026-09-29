@@ -191,8 +191,10 @@ reset on every boot.
 The isolated Marauder build keeps its settings in `marauder_fs`. Its built-in
 firmware updater is disabled because the next OTA slot is Hub. Use CRUB's
 `upmarauder` command for later Marauder updates. The manager checks for the
-`marauder_fs` image marker before staging this build, but local builds are not
+`marauder_bond` image marker before staging this build, but local builds are not
 authenticated releases; build from the pinned source and patch in this repo.
+Marauder's Bluetooth bonds and backlight preference use their own namespaces
+inside the shared default NVS partition; the build does not clear that NVS.
 
 CRUB does not report which application is in `extra`, and neither can the
 manager, which only sees the SD card. There is deliberately no `codex` or

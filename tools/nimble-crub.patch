@@ -1,0 +1,54 @@
+diff --git a/src/NimBLEDevice.cpp b/src/NimBLEDevice.cpp
+index 15920e5..2508d8a 100644
+--- a/src/NimBLEDevice.cpp
++++ b/src/NimBLEDevice.cpp
+@@ -748,8 +748,10 @@ NimBLEAddress NimBLEDevice::getWhiteListAddress(size_t index) {
+         errRc = nvs_flash_init();
+ 
+         if (errRc == ESP_ERR_NVS_NO_FREE_PAGES || errRc == ESP_ERR_NVS_NEW_VERSION_FOUND) {
++            #ifndef CRUB_SHARED_EXTRA
+             ESP_ERROR_CHECK(nvs_flash_erase());
+             errRc = nvs_flash_init();
++            #endif
+         }
+ 
+         ESP_ERROR_CHECK(errRc);
+diff --git a/src/nimble/host/store/config/src/ble_store_nvs.c b/src/nimble/host/store/config/src/ble_store_nvs.c
+index 49ca6ed..e9b54f2 100644
+--- a/src/nimble/host/store/config/src/ble_store_nvs.c
++++ b/src/nimble/host/store/config/src/ble_store_nvs.c
+@@ -40,7 +40,7 @@
+ #define NIMBLE_NVS_OUR_SEC_KEY                   "our_sec"
+ #define NIMBLE_NVS_CCCD_SEC_KEY                  "cccd_sec"
+ #define NIMBLE_NVS_PEER_RECORDS_KEY              "p_dev_rec"
+-#define NIMBLE_NVS_NAMESPACE                     "nimble_bond"
++#define NIMBLE_NVS_NAMESPACE                     "marauder_bond"
+ 
+ typedef uint32_t nvs_handle_t;
+ 
+@@ -126,6 +126,11 @@ get_nvs_peer_record(char *key_string, struct ble_hs_dev_records *p_dev_rec)
+         goto end;
+     }
+ 
++    if (required_size != sizeof(*p_dev_rec)) {
++        err = ESP_ERR_NVS_INVALID_LENGTH;
++        goto end;
++    }
++
+     err = nvs_get_blob(nimble_handle, key_string, p_dev_rec,
+                        &required_size);
+ 
+@@ -155,6 +160,13 @@ get_nvs_db_value(int obj_type, char *key_string, union ble_store_value *val)
+         goto end;
+     }
+ 
++    size_t expected_size = obj_type == BLE_STORE_OBJ_TYPE_CCCD
++                         ? sizeof(val->cccd) : sizeof(val->sec);
++    if (required_size != expected_size) {
++        err = ESP_ERR_NVS_INVALID_LENGTH;
++        goto end;
++    }
++
+     if (obj_type == BLE_STORE_OBJ_TYPE_CCCD) {
+         err = nvs_get_blob(nimble_handle, key_string, &val->cccd,
+                            &required_size);

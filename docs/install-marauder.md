@@ -11,6 +11,10 @@ layout, that is Bruce's LittleFS partition, so the official image may erase
 Bruce settings. The isolated build in this repository pins upstream Marauder
 1.17.0, mounts the new `marauder_fs` label, and disables Marauder's own firmware
 updater. Its OTA updater would otherwise select Hub as the next app partition.
+The build also gives Marauder's Bluetooth bonds and backlight preference
+separate namespaces in the existing default NVS partition. It checks stored
+Bluetooth record sizes and never erases the shared NVS while initializing
+NimBLE.
 
 ## Build the application
 
@@ -28,8 +32,9 @@ arduino-cli core install esp32:esp32@2.0.11 --additional-urls \
 
 The script checks upstream commit `8ae4622abcc9c9c5729d4e97491907581d7f0c34`,
 applies `tools/marauder-crub.patch`, fetches the library versions used by its
-upstream CI, and builds `dist/Marauder.bin`. It checks the application size,
-ESP project name, and embedded `marauder_fs` label. This step touches only the
+upstream CI, applies `tools/nimble-crub.patch`, and builds `dist/Marauder.bin`
+and `dist/Marauder.elf`. It checks the application size, ESP project name,
+and embedded `marauder_fs` and `marauder_bond` labels. This step touches only the
 host computer. `local --app all` continues to select Hub and Codex; select
 Marauder explicitly.
 

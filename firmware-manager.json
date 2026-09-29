@@ -116,7 +116,7 @@
       "partition": "extra",
       "partition_size": 4980736,
       "project_name": "arduino-lib-builder",
-      "required_image_marker": "marauder_fs",
+      "required_image_marker": "marauder_bond",
       "sd_path": "firmware/Marauder.bin",
       "aliases": {
         "upmarauder": "flash /firmware/Marauder.bin extra"

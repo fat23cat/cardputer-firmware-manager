@@ -80,6 +80,23 @@ index 8b89a2b..d93ccbb 100644
    }
 +  #endif
  }
+diff --git a/esp32_marauder/esp32_marauder.ino b/esp32_marauder/esp32_marauder.ino
+index fc5dc5a..467801f 100644
+--- a/esp32_marauder/esp32_marauder.ino
++++ b/esp32_marauder/esp32_marauder.ino
+@@ -149,7 +149,11 @@ uint32_t currentTime  = 0;
+   void brightnessInit() {
+     #ifdef HAS_SCREEN
+       BL_SETUP();
+-      bl_prefs.begin("backlight", false);
++      #ifdef CRUB_SHARED_EXTRA
++        bl_prefs.begin("marauder_bl", false);
++      #else
++        bl_prefs.begin("backlight", false);
++      #endif
+       bl_level_idx = bl_prefs.getUChar("level", 9);
+       if (bl_level_idx >= BL_NUM_LEVELS) bl_level_idx = 9;
+       BL_SET(BL_LEVELS[bl_level_idx]);
 diff --git a/esp32_marauder/settings.cpp b/esp32_marauder/settings.cpp
 index dde5c66..63dcff6 100644
 --- a/esp32_marauder/settings.cpp
