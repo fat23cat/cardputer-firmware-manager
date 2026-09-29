@@ -4,9 +4,7 @@ import hashlib
 import io
 import json
 import os
-import shutil
 import struct
-import subprocess
 import tempfile
 import unittest
 from copy import deepcopy
@@ -35,68 +33,6 @@ from tools.prepare_marauder_table import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-class MarauderBleLifecycleTest(unittest.TestCase):
-    def test_shutdown_skips_stale_ble_objects_after_nimble_deinit(self) -> None:
-        compiler = shutil.which("c++")
-        if compiler is None:
-            self.skipTest("C++ compiler unavailable")
-
-        source = r'''
-#include "marauder_ble_lifecycle.h"
-
-struct Device {
-    static bool initialized;
-    static int deinits;
-    static bool getInitialized() { return initialized; }
-    static void deinit() { ++deinits; initialized = false; }
-};
-bool Device::initialized = false;
-int Device::deinits = 0;
-
-struct Advertising { int stops = 0; void stop() { ++stops; } };
-struct Scan {
-    int stops = 0;
-    int clears = 0;
-    void stop() { ++stops; }
-    void clearResults() { ++clears; }
-};
-
-int main() {
-    Advertising advertising;
-    Scan scan;
-    Advertising* ad = &advertising;
-    Scan* scanner = &scan;
-    int delays = 0;
-    auto delay = [&delays]() { ++delays; };
-
-    // A BLE spam iteration deinitialized NimBLE, but upstream left both
-    // pointers and its ble_initialized flag stale before menu exit.
-    if (crubShutdownBle<Device>(ad, scanner, delay)) return 1;
-    if (ad || scanner || advertising.stops || scan.stops || scan.clears ||
-        Device::deinits || delays) return 2;
-
-    Device::initialized = true;
-    ad = &advertising;
-    scanner = &scan;
-    if (!crubShutdownBle<Device>(ad, scanner, delay)) return 3;
-    if (ad || scanner || advertising.stops != 1 || scan.stops != 1 ||
-        scan.clears != 1 || Device::deinits != 1 || delays != 1) return 4;
-    return 0;
-}
-'''
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            source_path = Path(temporary_directory) / "ble_lifecycle.cpp"
-            executable = Path(temporary_directory) / "ble_lifecycle"
-            source_path.write_text(source)
-            result = subprocess.run(
-                [compiler, "-std=c++11", "-I", str(ROOT / "tools"),
-                 str(source_path), "-o", str(executable)],
-                capture_output=True, text=True,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr)
-            subprocess.run([str(executable)], check=True)
 
 
 def fake_app(
@@ -195,6 +131,9 @@ class CatalogTest(unittest.TestCase):
 
         self.assertEqual(marauder["partition"], "extra")
         self.assertEqual(marauder["partition_size"], 0x4C0000)
+        self.assertEqual(marauder["repository"], "fat23cat/ESP32Marauder")
+        self.assertEqual(marauder["source_revision"],
+                         "940ebfd380a464dd09184b2d561c11e59898922c")
         self.assertEqual(marauder["aliases"]["upmarauder"],
                          "flash /firmware/Marauder.bin extra")
         self.assertEqual(by_name["marauder_fs"], {

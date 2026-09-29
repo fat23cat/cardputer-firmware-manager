@@ -6,7 +6,7 @@ between [Cardputer Hub](https://github.com/fat23cat/cardputer-hub) and a shared
 `extra` application slot that holds
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
 [Bruce](https://github.com/BruceDevices/firmware),
-[ESP32 Marauder](https://github.com/justcallmekoko/ESP32Marauder), or another
+[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra), or another
 application, and
 prepares safe app-only updates on a FAT32 microSD card.
 

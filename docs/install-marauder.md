@@ -8,8 +8,9 @@ other app images remain on the SD card. Bruce's LittleFS partition stays at
 The [official Cardputer ADV image](https://github.com/justcallmekoko/ESP32Marauder/releases/tag/v1.17.0)
 mounts the default `spiffs` partition with format-on-failure. On this CRUB
 layout, that is Bruce's LittleFS partition, so the official image may erase
-Bruce settings. The isolated build in this repository pins upstream Marauder
-1.17.0, mounts the new `marauder_fs` label, and disables Marauder's own firmware
+Bruce settings. The isolated build pins the
+[Cardputer CRUB fork](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra),
+based on upstream Marauder 1.17.0. It mounts the new `marauder_fs` label and disables Marauder's own firmware
 updater. Its OTA updater would otherwise select Hub as the next app partition.
 The build also gives Marauder's Bluetooth bonds and backlight preference
 separate namespaces in the existing default NVS partition. It checks stored
@@ -32,11 +33,12 @@ arduino-cli core install esp32:esp32@2.0.11 --additional-urls \
 ./tools/build_marauder.sh
 ```
 
-The script checks upstream commit `8ae4622abcc9c9c5729d4e97491907581d7f0c34`,
-applies `tools/marauder-crub.patch`, fetches the library versions used by its
-upstream CI, applies `tools/nimble-crub.patch`, and builds `dist/Marauder.bin`
-and `dist/Marauder.elf`. The build includes
-`tools/marauder_ble_lifecycle.h` to guard BLE shutdown. It checks the
+The script checks fork commit `940ebfd380a464dd09184b2d561c11e59898922c`,
+fetches the library versions used by upstream CI, applies the fork's
+`patches/nimble-crub.patch` to the pinned NimBLE library, and builds
+`dist/Marauder.bin` and `dist/Marauder.elf`. The fork includes the BLE shutdown
+guard and handles one BLE spam payload per main loop to improve keyboard
+response. The script checks the
 application size, ESP project name,
 and embedded `marauder_fs` and `marauder_bond` labels. This step touches only the
 host computer. `local --app all` continues to select Hub and Codex; select

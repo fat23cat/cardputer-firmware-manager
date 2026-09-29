@@ -8,6 +8,9 @@
   Bluetooth records, avoid stopping stale NimBLE objects after BLE spam exits,
   disable its updater on the CRUB layout, and provide a guarded one-time table
   preparation tool that verifies a full backup and the unused flash range.
+- Pin the Cardputer CRUB fork of Marauder for firmware-specific fixes and
+  process one BLE spam payload per UI loop so the keyboard is checked between
+  steps. Keep NimBLE's isolation patch with the fork.
 - Reject unisolated Marauder images before SD staging and preserve the default
   `local --app all` and published `release --app all` selections.
 - Update the pinned CRUB launcher to 3.1.0 and document an application-only

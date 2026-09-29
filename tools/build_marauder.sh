@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-source_commit=8ae4622abcc9c9c5729d4e97491907581d7f0c34
+source_commit=940ebfd380a464dd09184b2d561c11e59898922c
 arduino_cli="${ARDUINO_CLI:-arduino-cli}"
 work_dir="$(mktemp -d)"
 if [[ "${MARAUDER_KEEP_BUILD:-0}" != 1 ]]; then
@@ -15,8 +15,8 @@ source_dir="$work_dir/ESP32Marauder"
 if [[ -n "${MARAUDER_SOURCE_DIR:-}" ]]; then
   cp -R "$MARAUDER_SOURCE_DIR" "$source_dir"
 else
-  git clone --quiet --depth 1 --branch v1.17.0 \
-    https://github.com/justcallmekoko/ESP32Marauder.git "$source_dir"
+  git clone --quiet --depth 1 --branch codex/cardputer-crub-extra \
+    https://github.com/fat23cat/ESP32Marauder.git "$source_dir"
 fi
 actual_commit="$(git -C "$source_dir" rev-parse HEAD)"
 if [[ "$actual_commit" != "$source_commit" ]]; then
@@ -24,10 +24,6 @@ if [[ "$actual_commit" != "$source_commit" ]]; then
   exit 1
 fi
 git -C "$source_dir" reset --hard "$source_commit" >/dev/null
-git -C "$source_dir" apply --unidiff-zero --check "$project_dir/tools/marauder-crub.patch"
-git -C "$source_dir" apply --unidiff-zero "$project_dir/tools/marauder-crub.patch"
-cp "$project_dir/tools/marauder_ble_lifecycle.h" \
-  "$source_dir/esp32_marauder/marauder_ble_lifecycle.h"
 
 libraries="$work_dir/libraries"
 if [[ -n "${MARAUDER_LIBRARIES_DIR:-}" ]]; then
@@ -63,8 +59,8 @@ if [[ "$(git -C "$nimble_dir" rev-parse HEAD)" != "$nimble_commit" ]]; then
   exit 1
 fi
 git -C "$nimble_dir" reset --hard "$nimble_commit" >/dev/null
-git -C "$nimble_dir" apply --check "$project_dir/tools/nimble-crub.patch"
-git -C "$nimble_dir" apply "$project_dir/tools/nimble-crub.patch"
+git -C "$nimble_dir" apply --check "$source_dir/patches/nimble-crub.patch"
+git -C "$nimble_dir" apply "$source_dir/patches/nimble-crub.patch"
 
 python3 - "$source_dir" "$libraries/CustomTFT_eSPI" <<'PY'
 from pathlib import Path
