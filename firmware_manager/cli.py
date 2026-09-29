@@ -210,6 +210,7 @@ def _doctor(
                 image,
                 app["partition_size"],
                 app["project_name"],
+                app.get("required_image_marker"),
             )
             actual_digest = sha256(image)
             locked_digest = entry.get("sha256") if isinstance(entry, dict) else None
@@ -255,6 +256,7 @@ def run(arguments: Optional[List[str]] = None) -> int:
                 app_id
                 for app_id in selected
                 if "local_image" in catalog["apps"][app_id]
+                and catalog["apps"][app_id].get("default_local", True)
             ]
         workspace = args.workspace.expanduser().resolve()
         images: Dict[str, Path] = {}
@@ -279,6 +281,14 @@ def run(arguments: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "release":
+        if args.app in ([], ["all"]):
+            selected = [
+                app_id for app_id in selected
+                if "release_asset" in catalog["apps"][app_id]
+            ]
+        for app_id in selected:
+            if "release_asset" not in catalog["apps"][app_id]:
+                raise FirmwareError(f"{app_id}: no published release; build it locally")
         tags = _tag_map(args.tag, selected)
         client = GitHubReleaseClient()
         with tempfile.TemporaryDirectory(

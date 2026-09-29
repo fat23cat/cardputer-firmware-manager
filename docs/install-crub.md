@@ -2,7 +2,7 @@
 
 This is the one-time provisioning procedure for an M5Stack Cardputer ADV with
 an 8 MiB flash chip. It installs CRUB and Cardputer Hub in their own
-application partitions, and Codex Microputer ADV or Bruce in the shared `extra`
+application partitions, and Codex Microputer ADV, Bruce, or isolated Marauder in the shared `extra`
 slot. A device that already runs the earlier dedicated Codex layout follows
 [Migrate from the dedicated Codex layout](#migrate-from-the-dedicated-codex-layout)
 instead of the first-install steps.
@@ -95,7 +95,7 @@ directory when a different project configuration is used, so building both
 into `.pio/build` deletes whichever was built first.
 
 Before writing, check that `.pio/build/m5cardputer/partitions.bin` contains the
-expected `hub`, `extra`, `apps_nvs`, `hub_config`, and `spiffs` offsets, and
+expected `hub`, `extra`, `apps_nvs`, `hub_config`, `spiffs`, and `marauder_fs` offsets, and
 that `.pio/build/m5cardputer/firmware.bin` fits the `test` partition
 (`0xc0000` bytes). The QIO bootloader is 22,528 bytes and must end before
 `0x8000`.
@@ -127,6 +127,7 @@ erase nvs
 erase apps_nvs
 erase hub_config
 erase spiffs
+erase marauder_fs
 ```
 
 Do not repeat those commands during normal application updates.
@@ -144,7 +145,8 @@ upcodex
 ```
 
 Each command must report `app: ok` and `flash complete`. Use `upbruce` instead
-of `upcodex` to put Bruce in `extra`; both images can stay on the card.
+of `upcodex` to put Bruce in `extra`; both images can stay on the card. See
+[Install Marauder](install-marauder.md) for its isolated build.
 
 ## Migrate from the dedicated Codex layout
 
@@ -152,7 +154,8 @@ The earlier layout had a 2.5 MiB `hub`, a dedicated `codex` partition at
 `0x350000`, `apps_nvs` at `0x550000`, `hub_config` at `0x560000`, a 512 KiB
 `vfs`, and a 1 MiB `spiffs`. The current layout keeps `hub` at `0xd0000`,
 replaces `codex` with the 4.75 MiB `extra` slot, and moves both settings
-partitions to the end of flash. Copying them preserves Hub and Codex settings.
+partitions to the end of flash. It also gives Marauder its own `marauder_fs`
+partition at `0x7d0000`. Copying the NVS partitions preserves Hub and Codex settings.
 
 1. If `codexfast` is active, restore the CRUB menu with `crubmenu` first. The
    boot command `launch -f codex` has no target after migration.
@@ -182,11 +185,12 @@ partitions to the end of flash. Copying them preserves Hub and Codex settings.
    ```
 
 6. Verify the five written ranges with `esptool verify_flash`.
-7. Boot CRUB and clear the new `spiffs` range, which holds leftovers from the
-   old one. Do not erase `nvs`, `apps_nvs`, or `hub_config`:
+7. Boot CRUB and clear the new `spiffs` and `marauder_fs` ranges, which hold
+   leftovers from the old layout. Do not erase `nvs`, `apps_nvs`, or `hub_config`:
 
    ```text
    erase spiffs
+   erase marauder_fs
    ```
 
 8. Stage Hub, Codex, and optionally Bruce with this repository's manager, then

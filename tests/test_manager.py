@@ -22,6 +22,14 @@ from firmware_manager.core import (
     validate_image,
     validate_layout,
 )
+from tools.prepare_marauder_table import (
+    ENTRY,
+    FLASH_SIZE,
+    TABLE_OFFSET,
+    encode_entry,
+    prepare_table,
+    table_footer,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +86,7 @@ class CatalogTest(unittest.TestCase):
 
     def test_resolves_all_or_one_application_in_catalog_order(self) -> None:
         self.assertEqual(
-            resolve_apps(self.catalog, ["all"]), ["hub", "codex", "bruce"]
+            resolve_apps(self.catalog, ["all"]), ["hub", "codex", "bruce", "marauder"]
         )
         self.assertEqual(resolve_apps(self.catalog, ["codex"]), ["codex"])
 
@@ -115,6 +123,90 @@ class CatalogTest(unittest.TestCase):
         self.assertNotIn("vfs", by_name)
         self.assertEqual(self.catalog["apps"]["codex"]["partition"], "extra")
         self.assertEqual(self.catalog["apps"]["bruce"]["partition"], "extra")
+
+    def test_marauder_has_isolated_settings_and_shares_extra(self) -> None:
+        partitions = validate_layout(ROOT / self.catalog["layout"], 0x800000)
+        by_name = {partition["name"]: partition for partition in partitions}
+        marauder = self.catalog["apps"]["marauder"]
+
+        self.assertEqual(marauder["partition"], "extra")
+        self.assertEqual(marauder["partition_size"], 0x4C0000)
+        self.assertEqual(marauder["repository"], "fat23cat/ESP32Marauder")
+        self.assertEqual(marauder["source_revision"],
+                         "940ebfd380a464dd09184b2d561c11e59898922c")
+        self.assertEqual(marauder["aliases"]["upmarauder"],
+                         "flash /firmware/Marauder.bin extra")
+        self.assertEqual(by_name["marauder_fs"], {
+            "name": "marauder_fs", "type": "data", "subtype": "spiffs",
+            "offset": 0x7D0000, "size": 0x20000,
+        })
+        self.assertEqual(by_name["spiffs"]["offset"], 0x7B0000)
+        self.assertNotIn("release_asset", marauder)
+        self.assertEqual(marauder["required_image_marker"], "marauder_bond")
+
+    def test_local_only_application_is_not_downloaded_by_release_all(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with mock.patch("firmware_manager.cli.GitHubReleaseClient") as client:
+                client.return_value.download.side_effect = FirmwareError("stop before staging")
+                with self.assertRaisesRegex(FirmwareError, "stop before staging"):
+                    run(["release", "--sd", temporary_directory])
+                self.assertEqual(client.return_value.download.call_args.args[0], "hub")
+
+        with self.assertRaisesRegex(FirmwareError, "no published release"):
+            run(["release", "--app", "marauder", "--sd", temporary_directory])
+
+
+class MarauderTableTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.catalog = load_catalog(ROOT / "firmware-manager.json")
+
+    def make_backup(self, destination: Path) -> None:
+        old = b"".join(
+            encode_entry(partition)
+            for partition in self.catalog["partition_contract"]
+            if partition["name"] != "marauder_fs"
+        )
+        with destination.open("wb") as backup:
+            backup.write(b"\xff" * FLASH_SIZE)
+        with destination.open("r+b") as backup:
+            backup.seek(TABLE_OFFSET)
+            backup.write(old + table_footer(old))
+
+    def test_prepared_table_only_adds_marauder_partition(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.bin"
+            result = Path(directory) / "partitions.bin"
+            self.make_backup(backup)
+            table = prepare_table(backup, result)
+            self.assertEqual(table, result.read_bytes())
+            entries = [ENTRY.unpack_from(table, index * ENTRY.size)
+                       for index in range(10)]
+            self.assertEqual(entries[8][5].rstrip(b"\0"), b"marauder_fs")
+            self.assertEqual((entries[8][3], entries[8][4]),
+                             (0x7D0000, 0x20000))
+            self.assertEqual(entries[9][5].rstrip(b"\0"), b"coredump")
+            self.assertEqual(hashlib.sha256(table).hexdigest(),
+                             "419bf358c3e0af02dddf17110f350b67aeb1cda64a253f24d956b5635e7afb92")
+
+    def test_rejects_nonblank_marauder_range_and_unexpected_table(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.bin"
+            result = Path(directory) / "partitions.bin"
+            self.make_backup(backup)
+            with backup.open("r+b") as data:
+                data.seek(0x7D0000)
+                data.write(b"x")
+            with self.assertRaisesRegex(FirmwareError, "not blank"):
+                prepare_table(backup, result)
+            self.assertFalse(result.exists())
+            with backup.open("r+b") as data:
+                data.seek(0x7D0000)
+                data.write(b"\xff")
+                data.seek(TABLE_OFFSET + 4 * ENTRY.size)
+                data.write(b"x")
+            with self.assertRaisesRegex(FirmwareError, "differs"):
+                prepare_table(backup, result)
+            self.assertFalse(result.exists())
 
 
 class LocalBuildTest(unittest.TestCase):
@@ -190,6 +282,21 @@ class LocalBuildTest(unittest.TestCase):
 
             stage.assert_not_called()
 
+    def test_local_marauder_uses_isolated_build_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workspace = Path(temporary_directory)
+            (workspace / "cardputer-firmware-manager").mkdir()
+            with mock.patch("firmware_manager.cli.stage_images") as stage:
+                with redirect_stdout(io.StringIO()):
+                    run([
+                        "local", "--app", "marauder", "--workspace",
+                        str(workspace), "--sd", str(workspace),
+                    ])
+            self.assertEqual(
+                stage.call_args.args[1]["marauder"],
+                workspace.resolve() / "cardputer-firmware-manager" / "dist" / "Marauder.bin",
+            )
+
 
 class StagingTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -222,6 +329,37 @@ class StagingTest(unittest.TestCase):
             sums = (sd / "firmware" / "SHA256SUMS").read_text()
             self.assertIn("cardputer-hub.bin", sums)
             self.assertIn("Codex.bin", sums)
+
+    def test_staging_marauder_keeps_bruce_image_on_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            bruce = sd / "firmware" / "Bruce.bin"
+            bruce.parent.mkdir()
+            bruce.write_bytes(fake_app(b"Bruce", "arduino-lib-builder"))
+            marauder = root / "Marauder.bin"
+            marauder.write_bytes(fake_app(b"Marauder marauder_fs marauder_bond", "arduino-lib-builder"))
+
+            stage_images(self.catalog, {"marauder": marauder}, sd,
+                         require_mount=False)
+
+            self.assertEqual(bruce.read_bytes(),
+                             fake_app(b"Bruce", "arduino-lib-builder"))
+            self.assertEqual((sd / "firmware" / "Marauder.bin").read_bytes(),
+                             marauder.read_bytes())
+
+    def test_rejects_unisolated_marauder_before_writing_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            image = root / "official.bin"
+            image.write_bytes(fake_app(b"ordinary Marauder marauder_fs", "arduino-lib-builder"))
+            with self.assertRaisesRegex(FirmwareError, "required image marker"):
+                stage_images(self.catalog, {"marauder": image}, sd,
+                             require_mount=False)
+            self.assertEqual(list(sd.iterdir()), [])
 
     def test_merges_managed_aliases_without_destroying_user_aliases(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -264,6 +402,8 @@ class StagingTest(unittest.TestCase):
                     "flash /firmware/Codex.bin extra",
                     "upbruce",
                     "flash /firmware/Bruce.bin extra",
+                    "upmarauder",
+                    "flash /firmware/Marauder.bin extra",
                 ],
             )
 

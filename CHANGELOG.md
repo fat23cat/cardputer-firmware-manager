@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add a local isolated ESP32 Marauder 1.17.0 build for Cardputer ADV in the
+  shared `extra` slot. Give it a dedicated 128 KiB `marauder_fs` partition,
+  isolate its Bluetooth and backlight NVS namespaces, reject malformed stored
+  Bluetooth records, avoid stopping stale NimBLE objects after BLE spam exits,
+  disable its updater on the CRUB layout, and provide a guarded one-time table
+  preparation tool that verifies a full backup and the unused flash range.
+- Pin the Cardputer CRUB fork of Marauder for firmware-specific fixes and
+  process one BLE spam payload per UI loop so the keyboard is checked between
+  steps. Keep NimBLE's isolation patch with the fork.
+- Reject unisolated Marauder images before SD staging and preserve the default
+  `local --app all` and published `release --app all` selections.
 - Update the pinned CRUB launcher to 3.1.0 and document an application-only
   USB update that preserves the QIO bootloader, shared layout, and other apps.
   The upstream release binary exceeds the 768 KiB launcher partition, so the
