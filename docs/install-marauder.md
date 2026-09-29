@@ -95,6 +95,8 @@ go
 remain on SD. To switch back, run `upbruce` or `upcodex`, then `go`. After the
 first Marauder boot, save a setting, switch to Bruce and confirm its settings
 still work, then switch back to Marauder and confirm its setting persists.
+To leave an active scan or BLE spam screen on Cardputer ADV, press `Shift+9`
+(the `(` key in Marauder). `Fn+9` does not produce `(` in this keyboard driver.
 
 Marauder's **Update Firmware** menu is hidden in this build and its update
 command refuses to write. For later versions, rebuild with the reviewed
