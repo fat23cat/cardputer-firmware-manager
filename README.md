@@ -5,7 +5,8 @@ Host-side firmware bundle manager for an 8 MiB M5Stack Cardputer ADV running
 between [Cardputer Hub](https://github.com/fat23cat/cardputer-hub) and a shared
 `extra` application slot that holds
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
-[Bruce](https://github.com/BruceDevices/firmware),
+[Bruce](https://github.com/BruceDevices/firmware) (the pinned release or a local
+[Compact UI build](#bruce-with-compact-ui)),
 [ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra), or another
 application, and
 prepares safe app-only updates on a FAT32 microSD card.
@@ -37,7 +38,7 @@ dedicated `codex` partition, must be migrated once over USB. See
 |---|---|---|---|
 | `test` | `0x10000` | 768 KiB | CRUB |
 | `hub` | `0xd0000` | 2 MiB | Cardputer Hub |
-| `extra` | `0x2d0000` | 4.75 MiB | Codex, Bruce, or Marauder, one at a time |
+| `extra` | `0x2d0000` | 4.75 MiB | Codex, Bruce, Bruce Compact, or Marauder, one at a time |
 | `apps_nvs` | `0x790000` | 64 KiB | Codex settings |
 | `hub_config` | `0x7a0000` | 64 KiB | Hub settings |
 | `spiffs` | `0x7b0000` | 128 KiB | Bruce LittleFS |
@@ -77,7 +78,8 @@ python3 -m firmware_manager local \
 
 `local --app all` selects Hub and Codex. Marauder requires its isolated build
 and is selected explicitly; Bruce has no local build and is staged with
-`release`.
+`release`. The local Bruce Compact UI build is also selected explicitly; see
+[Bruce with Compact UI](#bruce-with-compact-ui).
 
 Add `--build` to build each selected repository first:
 
@@ -159,7 +161,7 @@ After staging:
 2. Press any Cardputer key to exit `usbsd`.
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
 4. Run `fw` to read the firmware list on the SD card.
-5. Run `uphub` to update Hub, and `upcodex`, `upbruce`, or `upmarauder` to fill `extra`.
+5. Run `uphub` to update Hub, and `upcodex`, `upbruce`, `upbrucec`, or `upmarauder` to fill `extra`.
 6. Wait for `app: ok` and `flash complete` after every update command.
 7. Launch Hub with `hub`, or the application in the shared slot with `go`.
 
@@ -199,6 +201,9 @@ upcodex     # Codex into extra
 go          # launch it
 
 upbruce     # later: replace Codex with Bruce
+go
+
+upbrucec    # later: replace Bruce with the Bruce Compact UI build
 go
 
 upmarauder  # later: replace Bruce with isolated Marauder
@@ -269,6 +274,52 @@ crubmenu
 Reset once more. `crubmenu` restores the default `boots 1500` and `fetch` boot
 commands. All three aliases are installed by the next `local` or `release`
 staging run; none of them writes the Cardputer's internal flash.
+
+## Bruce with Compact UI
+
+`brucecompact` is a local build of Bruce from the
+[`feat/cardputer-compact-ui`](https://github.com/fat23cat/firmware/tree/feat/cardputer-compact-ui)
+branch, which adds a compact layout for the 240x135 screen, switched on in
+**Config → Display & UI → Compact UI**. It sits next to the pinned release, so
+both images stay on the SD card:
+
+```text
+upbruce     # pinned Bruce release into extra
+go
+
+upbrucec    # Bruce Compact UI build into extra
+go
+```
+
+Both are the same application for the device: they run from `extra`, read the
+same `/bruce.conf` and files on the SD card, and use the same `spiffs` LittleFS
+partition, so settings, WiFi credentials and themes carry over in both
+directions. The release does not know the `uiCompact` setting; it ignores it and
+drops it the next time it saves settings, after which the Compact UI build
+starts with the compact layout off until it is switched on again.
+
+Build and stage it from a `firmware` checkout next to this repository (or set
+`BRUCE_SOURCE_DIR`), with [PlatformIO](https://platformio.org/) (`pio`) on the
+`PATH`:
+
+```bash
+git -C ../firmware switch feat/cardputer-compact-ui
+python3 -m firmware_manager local --app brucecompact \
+  --build --sd /Volumes/CARDPUTER
+```
+
+`tools/build_bruce_compact.sh` builds whatever is checked out and copies the raw
+application to `dist/BruceCompact.bin`; without `--build` the manager stages the
+existing `dist/BruceCompact.bin`. FastLED 3.10.5, which Bruce's
+`fastled/FastLED @^3.10.3` dependency resolves to, does not compile with
+Bruce's `-DFP=1` board flag, so the script pins FastLED 3.10.3 in the checkout's
+`platformio.ini` for the build only and always restores the file. It refuses to
+run when that file has local changes.
+
+Both Bruce images share the ESP project name `arduino-lib-builder`, so the
+manager accepts a `brucecompact` image only when it contains the Compact UI
+menu marker. A release image staged as `brucecompact` is rejected before the SD
+card is changed.
 
 ## Safety model
 

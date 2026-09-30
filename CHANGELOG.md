@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add `brucecompact`, an opt-in local build of Bruce with the Compact UI,
+  staged next to the pinned Bruce release as `firmware/BruceCompact.bin` and
+  flashed into `extra` with `upbrucec`. It shares Bruce's SD settings and
+  `spiffs` partition, requires the Compact UI marker so a release image cannot
+  be staged in its place, and is built by `tools/build_bruce_compact.sh`, which
+  pins FastLED 3.10.3 for the build only.
+- Print each application's catalog update alias after staging instead of
+  assuming `up<app id>`.
 - Add a local isolated ESP32 Marauder 1.17.0 build for Cardputer ADV in the
   shared `extra` slot. Give it a dedicated 128 KiB `marauder_fs` partition,
   isolate its Bluetooth and backlight NVS namespaces, reject malformed stored

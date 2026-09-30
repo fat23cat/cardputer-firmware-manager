@@ -86,7 +86,8 @@ class CatalogTest(unittest.TestCase):
 
     def test_resolves_all_or_one_application_in_catalog_order(self) -> None:
         self.assertEqual(
-            resolve_apps(self.catalog, ["all"]), ["hub", "codex", "bruce", "marauder"]
+            resolve_apps(self.catalog, ["all"]),
+            ["hub", "codex", "bruce", "brucecompact", "marauder"],
         )
         self.assertEqual(resolve_apps(self.catalog, ["codex"]), ["codex"])
 
@@ -143,6 +144,30 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(by_name["spiffs"]["offset"], 0x7B0000)
         self.assertNotIn("release_asset", marauder)
         self.assertEqual(marauder["required_image_marker"], "marauder_bond")
+
+    def test_bruce_compact_shares_extra_and_bruce_settings(self) -> None:
+        partitions = validate_layout(ROOT / self.catalog["layout"], 0x800000)
+        names = {partition["name"] for partition in partitions}
+        bruce = self.catalog["apps"]["bruce"]
+        compact = self.catalog["apps"]["brucecompact"]
+
+        # Same slot and same project as Bruce, so it replaces Bruce in extra and
+        # reads the same /bruce.conf on SD and the same spiffs LittleFS.
+        self.assertEqual(compact["partition"], bruce["partition"])
+        self.assertEqual(compact["partition_size"], bruce["partition_size"])
+        self.assertEqual(compact["project_name"], bruce["project_name"])
+        self.assertNotIn("brucecompact_fs", names)
+        self.assertEqual(compact["aliases"]["upbrucec"],
+                         "flash /firmware/BruceCompact.bin extra")
+        self.assertEqual(compact["start"], ["upbrucec", "go"])
+        self.assertEqual(bruce["aliases"]["upbruce"], "flash /firmware/Bruce.bin extra")
+        # Local-only, opt-in build that must carry the Compact UI marker.
+        self.assertNotIn("release_asset", compact)
+        self.assertFalse(compact["default_local"])
+        self.assertEqual(compact["local_repository"], "cardputer-firmware-manager")
+        self.assertEqual(compact["build_command"], ["./tools/build_bruce_compact.sh"])
+        self.assertEqual(compact["local_image"], "dist/BruceCompact.bin")
+        self.assertEqual(compact["required_image_marker"], "Compact UI: ")
 
     def test_local_only_application_is_not_downloaded_by_release_all(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -282,6 +307,26 @@ class LocalBuildTest(unittest.TestCase):
 
             stage.assert_not_called()
 
+    def test_local_bruce_compact_uses_manager_build_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workspace = Path(temporary_directory)
+            (workspace / "cardputer-firmware-manager").mkdir()
+            with mock.patch("firmware_manager.cli.stage_images") as stage:
+                with redirect_stdout(io.StringIO()):
+                    run([
+                        "local", "--app", "brucecompact", "--workspace",
+                        str(workspace), "--sd", str(workspace),
+                    ])
+            self.assertEqual(
+                stage.call_args.args[1]["brucecompact"],
+                workspace.resolve() / "cardputer-firmware-manager" / "dist" / "BruceCompact.bin",
+            )
+
+    def test_release_bruce_compact_has_no_published_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with self.assertRaisesRegex(FirmwareError, "no published release"):
+                run(["release", "--app", "brucecompact", "--sd", temporary_directory])
+
     def test_local_marauder_uses_isolated_build_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             workspace = Path(temporary_directory)
@@ -348,6 +393,41 @@ class StagingTest(unittest.TestCase):
                              fake_app(b"Bruce", "arduino-lib-builder"))
             self.assertEqual((sd / "firmware" / "Marauder.bin").read_bytes(),
                              marauder.read_bytes())
+
+    def test_staging_bruce_compact_keeps_release_bruce_on_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            bruce = sd / "firmware" / "Bruce.bin"
+            bruce.parent.mkdir()
+            bruce.write_bytes(fake_app(b"Bruce", "arduino-lib-builder"))
+            compact = root / "BruceCompact.bin"
+            compact.write_bytes(fake_app(b"Bruce Compact UI: ON", "arduino-lib-builder"))
+
+            stage_images(self.catalog, {"brucecompact": compact}, sd,
+                         require_mount=False)
+
+            self.assertEqual(bruce.read_bytes(),
+                             fake_app(b"Bruce", "arduino-lib-builder"))
+            self.assertEqual((sd / "firmware" / "BruceCompact.bin").read_bytes(),
+                             compact.read_bytes())
+            listing = (sd / "firmwares.txt").read_text()
+            self.assertIn("start: upbrucec -> go", listing)
+
+    def test_rejects_release_bruce_image_as_bruce_compact(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            release = root / "Bruce.bin"
+            release.write_bytes(fake_app(b"Bruce without compact UI", "arduino-lib-builder"))
+
+            with self.assertRaisesRegex(FirmwareError, "marker"):
+                stage_images(self.catalog, {"brucecompact": release}, sd,
+                             require_mount=False)
+
+            self.assertFalse((sd / "firmware" / "BruceCompact.bin").exists())
 
     def test_stages_readable_list_of_firmware_present_on_sd(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -511,6 +591,8 @@ class StagingTest(unittest.TestCase):
                     "flash /firmware/Codex.bin extra",
                     "upbruce",
                     "flash /firmware/Bruce.bin extra",
+                    "upbrucec",
+                    "flash /firmware/BruceCompact.bin extra",
                     "upmarauder",
                     "flash /firmware/Marauder.bin extra",
                 ],
@@ -712,6 +794,14 @@ class DoctorTest(unittest.TestCase):
                 "  upcodex or upbruce (shared partition extra; flash only one)",
             ],
         )
+
+
+    def test_post_stage_instructions_use_the_catalog_update_alias(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            _print_staged(self.catalog, ["brucecompact"])
+
+        self.assertEqual(output.getvalue().splitlines()[-1], "  upbrucec")
 
 
 class ReleaseClientTest(unittest.TestCase):

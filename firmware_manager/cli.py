@@ -120,7 +120,12 @@ def _print_staged(catalog: Mapping[str, Any], selected: List[str]) -> None:
             app_id
         )
     for partition, app_ids in by_partition.items():
-        commands = " or ".join(f"up{app_id}" for app_id in app_ids)
+        commands = " or ".join(
+            catalog["apps"][app_id]["start"][0]
+            if "start" in catalog["apps"][app_id]
+            else f"up{app_id}"
+            for app_id in app_ids
+        )
         if len(app_ids) > 1:
             commands += f" (shared partition {partition}; flash only one)"
         print(f"  {commands}")
