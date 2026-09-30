@@ -3,6 +3,7 @@
   "device": "M5Stack Cardputer ADV",
   "flash_size": 8388608,
   "layout": "layouts/cardputer-adv-8mb.csv",
+  "firmware_list_path": "firmwares.txt",
   "crub": {
     "repository": "wisnc/crub",
     "revision": "7819bb27c2a3e29529255fc848562f0b7d071c36",
@@ -21,6 +22,7 @@
     {"name": "coredump", "type": "data", "subtype": "coredump", "offset": 8323072, "size": 65536}
   ],
   "aliases": {
+    "fw": "cat /firmwares.txt",
     "go": "launch -f extra",
     "gofast": "echo launch -f extra > /.crub/boot"
   },
@@ -54,6 +56,7 @@
       "partition_size": 2097152,
       "project_name": "cardputer_hub",
       "sd_path": "firmware/cardputer-hub.bin",
+      "start": ["uphub", "hub"],
       "aliases": {
         "hub": "launch -f hub",
         "hubfast": "echo launch -f > /.crub/boot",
@@ -84,6 +87,7 @@
       "partition_size": 4980736,
       "project_name": "codex_microputer_adv",
       "sd_path": "firmware/Codex.bin",
+      "start": ["upcodex", "go"],
       "aliases": {
         "upcodex": "flash /firmware/Codex.bin extra"
       }
@@ -101,6 +105,7 @@
       "partition_size": 4980736,
       "project_name": "arduino-lib-builder",
       "sd_path": "firmware/Bruce.bin",
+      "start": ["upbruce", "go"],
       "aliases": {
         "upbruce": "flash /firmware/Bruce.bin extra"
       }
@@ -118,6 +123,7 @@
       "project_name": "arduino-lib-builder",
       "required_image_marker": "marauder_bond",
       "sd_path": "firmware/Marauder.bin",
+      "start": ["upmarauder", "go"],
       "aliases": {
         "upmarauder": "flash /firmware/Marauder.bin extra"
       }

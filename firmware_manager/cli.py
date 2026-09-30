@@ -112,6 +112,8 @@ def _tag_map(values: List[str], selected: List[str]) -> Dict[str, str]:
 def _print_staged(catalog: Mapping[str, Any], selected: List[str]) -> None:
     print("staged successfully; safely eject the card and exit CRUB usbsd")
     print("remount the card in CRUB with 'sd', then run:")
+    if "firmware_list_path" in catalog:
+        print("  fw (list firmware on SD)")
     by_partition: Dict[str, List[str]] = {}
     for app_id in selected:
         by_partition.setdefault(catalog["apps"][app_id]["partition"], []).append(

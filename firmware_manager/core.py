@@ -29,6 +29,19 @@ class FirmwareError(RuntimeError):
     """A user-actionable catalog, download, validation, or staging failure."""
 
 
+def _firmware_list_name(catalog: Mapping[str, Any]) -> Optional[str]:
+    if "firmware_list_path" not in catalog:
+        return None
+    name = catalog["firmware_list_path"]
+    if (
+        not isinstance(name, str)
+        or Path(name).name != name
+        or Path(name).suffix != ".txt"
+    ):
+        raise FirmwareError("firmware list path must be a .txt file at the SD root")
+    return name
+
+
 def load_catalog(path: Path) -> Dict[str, Any]:
     try:
         catalog = json.loads(path.read_text())
@@ -36,6 +49,7 @@ def load_catalog(path: Path) -> Dict[str, Any]:
         raise FirmwareError(f"cannot read catalog {path}: {error}") from error
     if catalog.get("schema_version") != 1 or not isinstance(catalog.get("apps"), dict):
         raise FirmwareError("unsupported or invalid firmware catalog")
+    list_path = _firmware_list_name(catalog)
     contract = catalog.get("partition_contract")
     if not isinstance(contract, list) or not contract:
         raise FirmwareError("firmware catalog has no partition contract")
@@ -49,6 +63,8 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             not isinstance(value, str) for value in aliases.values()
         ):
             raise FirmwareError(f"firmware catalog has invalid {field}")
+    if list_path is not None and catalog.get("aliases", {}).get("fw") != f"cat /{list_path}":
+        raise FirmwareError("firmware list alias does not match its path")
     for app_id, app in catalog["apps"].items():
         required = {
             "repository",
@@ -58,12 +74,20 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             "sd_path",
             "aliases",
         }
+        if list_path is not None:
+            required.add("start")
         missing = required.difference(app)
         local_fields = {"local_repository", "build_command", "local_image"}
         if local_fields.intersection(app):
             missing.update(local_fields.difference(app))
         if missing:
             raise FirmwareError(f"{app_id}: missing catalog fields: {', '.join(sorted(missing))}")
+        if list_path is not None and (
+            not isinstance(app["start"], list)
+            or len(app["start"]) != 2
+            or any(not isinstance(alias, str) or not alias for alias in app["start"])
+        ):
+            raise FirmwareError(f"{app_id}: invalid start sequence")
         if "release_asset" not in app and "local_image" not in app:
             raise FirmwareError(f"{app_id}: no local image or release asset")
         if app.get("release_image", "app") not in {"app", "merged"}:
@@ -101,6 +125,13 @@ def load_catalog(path: Path) -> Dict[str, Any]:
             not isinstance(marker, str) or not marker or not marker.isascii()
         ):
             raise FirmwareError(f"{app_id}: invalid required image marker")
+    if list_path is not None:
+        alias_names = set(catalog.get("aliases", {}))
+        for app in catalog["apps"].values():
+            alias_names.update(app["aliases"])
+        for app_id, app in catalog["apps"].items():
+            if any(alias not in alias_names for alias in app["start"]):
+                raise FirmwareError(f"{app_id}: start sequence uses an unknown alias")
     return catalog
 
 
@@ -371,6 +402,15 @@ def stage_images(
         app_id: sd_path(sd_root, app["sd_path"])
         for app_id, app in catalog["apps"].items()
     }
+    list_name = _firmware_list_name(catalog)
+    if list_name is not None and (sd_root / list_name).is_symlink():
+        raise FirmwareError("firmware list path must not be a symlink")
+    firmware_list_path = sd_path(sd_root, list_name) if list_name is not None else None
+    if firmware_list_path is not None and (
+        firmware_list_path.parent != sd_root
+        or firmware_list_path in destinations.values()
+    ):
+        raise FirmwareError("firmware list path conflicts with another SD file")
 
     aliases_path = sd_path(sd_root, ".crub/aliases")
     managed = _managed_aliases(catalog)
@@ -403,6 +443,18 @@ def stage_images(
         destination = destinations[app_id]
         _atomic_copy(source, destination, source_digests[app_id])
         staged.append(destination)
+
+    if firmware_list_path is not None:
+        available = [
+            (app_id, app)
+            for app_id, app in catalog["apps"].items()
+            if destinations[app_id].is_file()
+        ]
+        list_data = "FIRMWARES ON SD\n\n" + "\n\n".join(
+            f"{app_id.upper()}\nstart: {' -> '.join(app['start'])}"
+            for app_id, app in available
+        ) + "\n"
+        _atomic_write(firmware_list_path, list_data.encode("utf-8"))
 
     aliases_data = "".join(f"{name}\n{command}\n" for name, command in merged_aliases)
     _atomic_write(aliases_path, aliases_data.encode())
