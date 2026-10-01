@@ -110,6 +110,23 @@
         "upbruce": "flash /firmware/Bruce.bin extra"
       }
     },
+    "brucecompact": {
+      "name": "Bruce with Compact UI (local build)",
+      "repository": "fat23cat/firmware",
+      "local_repository": "cardputer-firmware-manager",
+      "build_command": ["./tools/build_bruce_compact.sh"],
+      "local_image": "dist/BruceCompact.bin",
+      "default_local": false,
+      "partition": "extra",
+      "partition_size": 4980736,
+      "project_name": "arduino-lib-builder",
+      "required_image_marker": "Compact UI: ",
+      "sd_path": "firmware/BruceCompact.bin",
+      "start": ["upbrucec", "go"],
+      "aliases": {
+        "upbrucec": "flash /firmware/BruceCompact.bin extra"
+      }
+    },
     "marauder": {
       "name": "ESP32 Marauder for Cardputer ADV (isolated)",
       "repository": "fat23cat/ESP32Marauder",
