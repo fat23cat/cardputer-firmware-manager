@@ -158,9 +158,33 @@ After staging:
 1. Safely eject the SD volume from the computer.
 2. Press any Cardputer key to exit `usbsd`.
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
-4. Run `uphub` to update Hub, and `upcodex`, `upbruce`, or `upmarauder` to fill `extra`.
-5. Wait for `app: ok` and `flash complete` after every command.
-6. Launch Hub with `hub`, or the application in the shared slot with `go`.
+4. Run `fw` to read the firmware list on the SD card.
+5. Run `uphub` to update Hub, and `upcodex`, `upbruce`, or `upmarauder` to fill `extra`.
+6. Wait for `app: ok` and `flash complete` after every update command.
+7. Launch Hub with `hub`, or the application in the shared slot with `go`.
+
+Every `local` or `release` staging run writes `/firmwares.txt` with the managed
+images currently present on the card, and adds `fw` as an alias for
+`cat /firmwares.txt`. The short entries show the two commands to use in order:
+
+```text
+FIRMWARES ON SD
+
+HUB
+start: uphub -> hub
+
+BRUCE
+start: upbruce -> go
+```
+
+The `up...` command flashes the named image into its application partition;
+the second command launches that partition. In particular, `go` launches
+whichever application is currently in `extra`. You can edit the text file on
+the SD card, but the next staging run regenerates it from the catalog and the
+images then present. For a permanent new entry, add the application to
+`firmware-manager.json`. The configured list path must be a distinct `.txt`
+file at the SD root. Older version 1 catalogs without `firmware_list_path`
+and `start` still stage images, without generating this list.
 
 CRUB treats `&&` as an unconditional separator, so update aliases never chain
 an automatic launch.
@@ -259,11 +283,13 @@ Before writing to the SD card, the manager:
 - verifies every copy and later `doctor --sd` run against SHA-256 metadata;
 - verifies GitHub's asset digest or a published checksum asset, and the
   catalog's pinned SHA-256 when it downloads a pinned release;
-- merges its eight aliases without deleting unrelated user aliases, and removes
+- merges its managed aliases without deleting unrelated user aliases, and removes
   the retired `codex`, `codexfast`, `extra`, and `extrafast` aliases only while
   they still hold their original managed commands;
 - preserves firmware for applications that were not selected;
-- writes `firmware/SHA256SUMS` and `firmware/firmware-manager-lock.json`.
+- rejects firmware list paths that overlap application images or CRUB files;
+- writes `firmware/SHA256SUMS`, `firmware/firmware-manager-lock.json`, and
+  `/firmwares.txt`.
 
 Partition editing, the initial CRUB installation, layout migration, full-flash
 restoration, and CRUB updates are deliberately outside routine app commands.

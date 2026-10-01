@@ -140,11 +140,14 @@ manager to stage local builds or GitHub Releases. Safely eject the volume, exit
 
 ```text
 sd
+fw
 uphub
 upcodex
 ```
 
-Each command must report `app: ok` and `flash complete`. Use `upbruce` instead
+`fw` reads `/firmwares.txt`, the list of images staged on the SD card and
+their update and launch commands. Each `up...` command must report `app: ok`
+and `flash complete`. Use `upbruce` instead
 of `upcodex` to put Bruce in `extra`; both images can stay on the card. See
 [Install Marauder](install-marauder.md) for its isolated build.
 

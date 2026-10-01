@@ -349,6 +349,113 @@ class StagingTest(unittest.TestCase):
             self.assertEqual((sd / "firmware" / "Marauder.bin").read_bytes(),
                              marauder.read_bytes())
 
+    def test_stages_readable_list_of_firmware_present_on_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            bruce = sd / "firmware" / "Bruce.bin"
+            bruce.parent.mkdir()
+            previous_bruce = fake_app(b"Bruce", "arduino-lib-builder")
+            bruce.write_bytes(previous_bruce)
+            hub = root / "hub.bin"
+            hub.write_bytes(fake_app())
+
+            stage_images(self.catalog, {"hub": hub}, sd, require_mount=False)
+
+            self.assertEqual(bruce.read_bytes(), previous_bruce)
+            self.assertEqual(
+                (sd / "firmwares.txt").read_text(),
+                "FIRMWARES ON SD\n\n"
+                "HUB\nstart: uphub -> hub\n\n"
+                "BRUCE\nstart: upbruce -> go\n",
+            )
+            self.assertIn(
+                "fw\ncat /firmwares.txt\n",
+                (sd / ".crub" / "aliases").read_text(),
+            )
+
+    def test_legacy_v1_catalog_still_stages_without_a_firmware_list(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            catalog = deepcopy(self.catalog)
+            del catalog["firmware_list_path"]
+            del catalog["aliases"]["fw"]
+            for app in catalog["apps"].values():
+                del app["start"]
+            catalog_path = root / "legacy.json"
+            catalog_path.write_text(json.dumps(catalog))
+            loaded = load_catalog(catalog_path)
+            sd = root / "card"
+            sd.mkdir()
+            hub = root / "hub.bin"
+            hub.write_bytes(fake_app())
+
+            stage_images(loaded, {"hub": hub}, sd, require_mount=False)
+
+            self.assertFalse((sd / "firmwares.txt").exists())
+            self.assertNotIn("fw\n", (sd / ".crub" / "aliases").read_text())
+            output = io.StringIO()
+            with redirect_stdout(output):
+                _print_staged(loaded, ["hub"])
+            self.assertNotIn("fw (list firmware on SD)", output.getvalue())
+
+    def test_rejects_firmware_list_path_overlapping_sd_files_before_copy(self) -> None:
+        for list_path in ("firmware/Bruce.bin", ".crub/boot"):
+            with self.subTest(list_path=list_path), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                sd = root / "card"
+                sd.mkdir()
+                protected = sd / list_path
+                protected.parent.mkdir(parents=True)
+                protected.write_bytes(b"keep this file")
+                hub = root / "hub.bin"
+                hub.write_bytes(fake_app())
+                catalog = deepcopy(self.catalog)
+                catalog["firmware_list_path"] = list_path
+                catalog["aliases"]["fw"] = f"cat /{list_path}"
+
+                with self.assertRaisesRegex(FirmwareError, "firmware list path"):
+                    stage_images(catalog, {"hub": hub}, sd, require_mount=False)
+
+                self.assertEqual(protected.read_bytes(), b"keep this file")
+                self.assertFalse((sd / "firmware" / "cardputer-hub.bin").exists())
+
+    def test_rejects_list_path_matching_an_application_image(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            protected = sd / "firmwares.txt"
+            protected.write_bytes(b"existing firmware")
+            hub = root / "hub.bin"
+            hub.write_bytes(fake_app())
+            catalog = deepcopy(self.catalog)
+            catalog["apps"]["bruce"]["sd_path"] = "firmwares.txt"
+
+            with self.assertRaisesRegex(FirmwareError, "firmware list path"):
+                stage_images(catalog, {"hub": hub}, sd, require_mount=False)
+
+            self.assertEqual(protected.read_bytes(), b"existing firmware")
+            self.assertFalse((sd / "firmware" / "cardputer-hub.bin").exists())
+
+    def test_rejects_firmware_list_symlink_before_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            protected = sd / "notes.txt"
+            protected.write_text("keep these notes")
+            (sd / "firmwares.txt").symlink_to(protected)
+            hub = root / "hub.bin"
+            hub.write_bytes(fake_app())
+
+            with self.assertRaisesRegex(FirmwareError, "firmware list path"):
+                stage_images(self.catalog, {"hub": hub}, sd, require_mount=False)
+
+            self.assertEqual(protected.read_text(), "keep these notes")
+            self.assertFalse((sd / "firmware" / "cardputer-hub.bin").exists())
+
     def test_rejects_unisolated_marauder_before_writing_sd(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -392,6 +499,8 @@ class StagingTest(unittest.TestCase):
                     "echo launch -f > /.crub/boot",
                     "crubmenu",
                     "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
+                    "fw",
+                    "cat /firmwares.txt",
                     "go",
                     "launch -f extra",
                     "gofast",
@@ -586,6 +695,7 @@ class DoctorTest(unittest.TestCase):
             lines.index("remount the card in CRUB with 'sd', then run:"),
             lines.index("  uphub"),
         )
+        self.assertIn("  fw (list firmware on SD)", lines)
 
     def test_post_stage_instructions_offer_one_image_for_the_shared_slot(
         self,
