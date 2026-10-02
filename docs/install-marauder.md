@@ -50,14 +50,17 @@ Do this only on a Cardputer already running the shared CRUB layout in this
 repository. The following step changes the internal partition table, so make
 a fresh [complete 8 MiB backup](install-crub.md#back-up-the-complete-device)
 first. Keep the backup outside the SD card. The preparation tool checks that
-the current table is exactly the earlier nine-partition CRUB table and that
-the new range contains only `0xff` bytes:
+the current table is exactly an earlier CRUB table from this repository and
+that every new range contains only `0xff` bytes:
 
 ```bash
-python3 tools/prepare_marauder_table.py /path/to/cardputer-adv-backup.bin
+python3 tools/prepare_partition_table.py /path/to/cardputer-adv-backup.bin
 ```
 
-It writes `dist/marauder-partitions.bin` and does not contact the Cardputer.
+It writes `dist/crub-partitions.bin` and does not contact the Cardputer. The
+current table also shrinks `extra` to 4.5 MiB and adds Meshtastic's `mesh_fs`;
+see [Install Meshtastic](install-meshtastic.md) for the details and the
+expected SHA-256.
 Review its SHA-256 and the backup path. Enter ROM download mode by holding
 `G0` while pressing Reset, then release `G0`. Use the serial port from the
 backup command. Write **only** the prepared table and verify it:
@@ -65,14 +68,15 @@ backup command. Write **only** the prepared table and verify it:
 ```bash
 python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
   --baud 115200 --before default_reset --after hard_reset write_flash \
-  0x8000 dist/marauder-partitions.bin
+  0x8000 dist/crub-partitions.bin
 python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-  verify_flash 0x8000 dist/marauder-partitions.bin
+  verify_flash 0x8000 dist/crub-partitions.bin
 ```
 
 Press Reset if the display stays dark. CRUB `pt info` must show `marauder_fs`
-at `0x7d0000` with size `0x20000`, while `hub`, `extra`, `apps_nvs`,
-`hub_config`, `spiffs`, and `coredump` keep their previous offsets. Do not
+at `0x7d0000` with size `0x20000` and `mesh_fs` at `0x750000` with size
+`0x40000`, while `hub`, `extra`, `apps_nvs`, `hub_config`, `spiffs`, and
+`coredump` keep their previous offsets. `extra` shrinks to `0x480000`. Do not
 erase any existing partition. The new partition starts blank and Marauder
 formats only `marauder_fs` on its first launch.
 

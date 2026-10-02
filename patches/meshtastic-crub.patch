@@ -1,0 +1,59 @@
+diff --git a/src/FSCommon.h b/src/FSCommon.h
+index c85c079..4a4260f 100644
+--- a/src/FSCommon.h
++++ b/src/FSCommon.h
+@@ -35,7 +35,8 @@ using namespace STM32_LittleFS_Namespace;
+ // ESP32 version
+ #include "LittleFS.h"
+ #define FSCom LittleFS
+-#define FSBegin() FSCom.begin(true) // format on failure
++// CRUB shared extra: "spiffs" belongs to Bruce, so mount (and format on failure) only mesh_fs.
++#define FSBegin() FSCom.begin(true, "/littlefs", 10, "mesh_fs")
+ #define FILE_O_WRITE "w"
+ #define FILE_O_READ "r"
+ #endif
+diff --git a/src/mesh/NodeDB.cpp b/src/mesh/NodeDB.cpp
+index 8b47c10..441eacd 100644
+--- a/src/mesh/NodeDB.cpp
++++ b/src/mesh/NodeDB.cpp
+@@ -539,8 +539,17 @@ bool NodeDB::factoryReset(bool eraseBleBonds)
+     if (eraseBleBonds) {
+         LOG_INFO("Erase BLE bonds");
+ #ifdef ARCH_ESP32
+-        // This will erase what's in NVS including ssl keys, persistent variables and ble pairing
+-        nvs_flash_erase();
++        // CRUB shared extra: the default NVS also holds other applications' settings.
++        // Erase only Meshtastic's namespaces: persistent variables, ssl keys and ble pairing.
++        static const char *const meshNamespaces[] = {"meshtastic", "MeshtasticOTA", "MeshtasticHTTPS", "mesh_bond"};
++        for (const char *name : meshNamespaces) {
++            nvs_handle_t handle;
++            if (nvs_open(name, NVS_READWRITE, &handle) == ESP_OK) {
++                nvs_erase_all(handle);
++                nvs_commit(handle);
++                nvs_close(handle);
++            }
++        }
+ #endif
+ #ifdef ARCH_NRF52
+         LOG_INFO("Clear bluetooth bonds!");
+diff --git a/src/platform/esp32/MeshtasticOTA.cpp b/src/platform/esp32/MeshtasticOTA.cpp
+index 20a3c59..86371df 100644
+--- a/src/platform/esp32/MeshtasticOTA.cpp
++++ b/src/platform/esp32/MeshtasticOTA.cpp
+@@ -63,12 +63,14 @@ void saveConfig(meshtastic_Config_NetworkConfig *network, meshtastic_OTAMode met
+ 
+ const esp_partition_t *getAppPartition()
+ {
+-    return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
++    // CRUB shared extra: ota_1 is this application's own slot and ota_0 is Cardputer Hub.
++    // There is no OTA loader partition; update with CRUB's upmesh instead.
++    return NULL;
+ }
+ 
+ bool getAppDesc(const esp_partition_t *part, esp_app_desc_t *app_desc)
+ {
+-    if (esp_ota_get_partition_description(part, app_desc) != ESP_OK) {
++    if (part == NULL || esp_ota_get_partition_description(part, app_desc) != ESP_OK) {
+         LOG_INFO("esp_ota_get_partition_description failed");
+         return false;
+     }

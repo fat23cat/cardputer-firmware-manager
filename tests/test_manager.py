@@ -22,17 +22,19 @@ from firmware_manager.core import (
     validate_image,
     validate_layout,
 )
-from tools.prepare_marauder_table import (
+from tools.prepare_partition_table import (
     ENTRY,
     FLASH_SIZE,
     TABLE_OFFSET,
-    encode_entry,
+    encode_table,
     prepare_table,
-    table_footer,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CURRENT_TABLE_SHA256 = (
+    "5c58e277a18e12a593da289becd9206441e759329df4bbb024758b05ff0ec16c"
+)
 
 
 def fake_app(
@@ -87,7 +89,8 @@ class CatalogTest(unittest.TestCase):
     def test_resolves_all_or_one_application_in_catalog_order(self) -> None:
         self.assertEqual(
             resolve_apps(self.catalog, ["all"]),
-            ["hub", "codex", "bruce", "brucecompact", "marauder"],
+            ["hub", "codex", "bruce", "brucecompact", "marauder", "gpsinfo",
+             "meshtastic"],
         )
         self.assertEqual(resolve_apps(self.catalog, ["codex"]), ["codex"])
 
@@ -116,7 +119,8 @@ class CatalogTest(unittest.TestCase):
         }
 
         self.assertEqual(by_name["hub"], (0xD0000, 0x200000))
-        self.assertEqual(by_name["extra"], (0x2D0000, 0x4C0000))
+        self.assertEqual(by_name["extra"], (0x2D0000, 0x480000))
+        self.assertEqual(by_name["mesh_fs"], (0x750000, 0x40000))
         self.assertEqual(by_name["apps_nvs"], (0x790000, 0x10000))
         self.assertEqual(by_name["hub_config"], (0x7A0000, 0x10000))
         self.assertEqual(by_name["spiffs"], (0x7B0000, 0x20000))
@@ -131,7 +135,7 @@ class CatalogTest(unittest.TestCase):
         marauder = self.catalog["apps"]["marauder"]
 
         self.assertEqual(marauder["partition"], "extra")
-        self.assertEqual(marauder["partition_size"], 0x4C0000)
+        self.assertEqual(marauder["partition_size"], 0x480000)
         self.assertEqual(marauder["repository"], "fat23cat/ESP32Marauder")
         self.assertEqual(marauder["source_revision"],
                          "940ebfd380a464dd09184b2d561c11e59898922c")
@@ -144,6 +148,73 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(by_name["spiffs"]["offset"], 0x7B0000)
         self.assertNotIn("release_asset", marauder)
         self.assertEqual(marauder["required_image_marker"], "marauder_bond")
+
+    def test_gps_info_is_an_explicit_local_app_in_shared_extra(self) -> None:
+        gps = self.catalog["apps"]["gpsinfo"]
+        self.assertEqual(gps["repository"], "DevinWatson/Cardputer-Adv-GPS-Info")
+        self.assertEqual(gps["source_revision"],
+                         "f16b636ec657b8d1c3fd264544c376a7e6c2a5ad")
+        self.assertEqual(gps["partition"], "extra")
+        self.assertEqual(gps["partition_size"], 0x480000)
+        self.assertEqual(gps["project_name"], "arduino-lib-builder")
+        self.assertEqual(gps["required_image_marker"], "Cardputer ADV GPS Info")
+        self.assertEqual(gps["sd_path"], "firmware/GPSInfo.bin")
+        self.assertEqual(gps["local_repository"], "cardputer-firmware-manager")
+        self.assertEqual(gps["build_command"], ["./tools/build_gps_info.sh"])
+        self.assertEqual(gps["local_image"], "dist/GPSInfo.bin")
+        self.assertFalse(gps["default_local"])
+        self.assertNotIn("release_asset", gps)
+        self.assertEqual(gps["aliases"]["upgpsinfo"],
+                         "flash /firmware/GPSInfo.bin extra")
+        self.assertEqual(gps["start"], ["upgpsinfo", "go"])
+
+    def test_meshtastic_has_isolated_settings_and_shares_extra(self) -> None:
+        partitions = validate_layout(ROOT / self.catalog["layout"], 0x800000)
+        by_name = {partition["name"]: partition for partition in partitions}
+        mesh = self.catalog["apps"]["meshtastic"]
+
+        self.assertEqual(mesh["repository"], "meshtastic/firmware")
+        self.assertEqual(mesh["source_revision"],
+                         "54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb")
+        self.assertEqual(mesh["partition"], "extra")
+        self.assertEqual(mesh["partition_size"], 0x480000)
+        self.assertEqual(mesh["project_name"], "arduino-lib-builder")
+        self.assertEqual(mesh["required_image_marker"], "mesh_bond")
+        self.assertEqual(mesh["sd_path"], "firmware/Meshtastic.bin")
+        self.assertEqual(mesh["local_repository"], "cardputer-firmware-manager")
+        self.assertEqual(mesh["build_command"], ["./tools/build_meshtastic.sh"])
+        self.assertEqual(mesh["local_image"], "dist/Meshtastic.bin")
+        self.assertFalse(mesh["default_local"])
+        self.assertNotIn("release_asset", mesh)
+        self.assertEqual(mesh["aliases"]["upmesh"],
+                         "flash /firmware/Meshtastic.bin extra")
+        self.assertEqual(mesh["start"], ["upmesh", "go"])
+        # Settings live after the shrunk extra slot, never in Bruce's spiffs.
+        self.assertEqual(by_name["mesh_fs"], {
+            "name": "mesh_fs", "type": "data", "subtype": "spiffs",
+            "offset": 0x750000, "size": 0x40000,
+        })
+        self.assertEqual(
+            by_name["extra"]["offset"] + by_name["extra"]["size"],
+            by_name["mesh_fs"]["offset"],
+        )
+        self.assertEqual(
+            by_name["mesh_fs"]["offset"] + by_name["mesh_fs"]["size"],
+            by_name["apps_nvs"]["offset"],
+        )
+
+    def test_meshtastic_build_pins_source_and_isolation_patch(self) -> None:
+        script = (ROOT / "tools" / "build_meshtastic.sh").read_text()
+        patch = (ROOT / "patches" / "meshtastic-crub.patch").read_text()
+
+        self.assertIn(self.catalog["apps"]["meshtastic"]["source_revision"], script)
+        self.assertIn("patches/meshtastic-crub.patch", script)
+        self.assertIn('"mesh_fs"', patch)
+        self.assertIn('"mesh_bond"', patch)
+        # Factory reset must not erase the default NVS shared with other apps.
+        self.assertIn("-        nvs_flash_erase();", patch)
+        # The OTA loader lookup must not select another application slot.
+        self.assertIn("+    return NULL;", patch)
 
     def test_bruce_compact_shares_extra_and_bruce_settings(self) -> None:
         partitions = validate_layout(ROOT / self.catalog["layout"], 0x800000)
@@ -181,55 +252,98 @@ class CatalogTest(unittest.TestCase):
             run(["release", "--app", "marauder", "--sd", temporary_directory])
 
 
-class MarauderTableTest(unittest.TestCase):
+class PartitionTableTest(unittest.TestCase):
     def setUp(self) -> None:
         self.catalog = load_catalog(ROOT / "firmware-manager.json")
+        self.current = self.catalog["partition_contract"]
 
-    def make_backup(self, destination: Path) -> None:
-        old = b"".join(
-            encode_entry(partition)
-            for partition in self.catalog["partition_contract"]
-            if partition["name"] != "marauder_fs"
-        )
-        with destination.open("wb") as backup:
-            backup.write(b"\xff" * FLASH_SIZE)
-        with destination.open("r+b") as backup:
-            backup.seek(TABLE_OFFSET)
-            backup.write(old + table_footer(old))
+    def earlier(self, *removed: str) -> list:
+        return [
+            dict(partition, size=0x4C0000) if partition["name"] == "extra"
+            else dict(partition)
+            for partition in self.current
+            if partition["name"] not in removed
+        ]
 
-    def test_prepared_table_only_adds_marauder_partition(self) -> None:
+    def make_backup(self, destination: Path, partitions: list,
+                    extra_image: bytes = b"") -> None:
+        data = bytearray(b"\xff" * FLASH_SIZE)
+        table = encode_table(partitions)
+        data[TABLE_OFFSET : TABLE_OFFSET + len(table)] = table
+        data[0x2D0000 : 0x2D0000 + len(extra_image)] = extra_image
+        destination.write_bytes(bytes(data))
+
+    def entries(self, table: bytes) -> list:
+        rows = []
+        for index in range(len(self.current)):
+            row = ENTRY.unpack_from(table, index * ENTRY.size)
+            rows.append((row[5].rstrip(b"\0").decode(), row[3], row[4]))
+        return rows
+
+    def test_shrinks_extra_and_adds_mesh_fs_to_marauder_table(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             backup = Path(directory) / "backup.bin"
             result = Path(directory) / "partitions.bin"
-            self.make_backup(backup)
+            self.make_backup(backup, self.earlier("mesh_fs"),
+                             segmented_app(b"x" * 0x1000))
             table = prepare_table(backup, result)
             self.assertEqual(table, result.read_bytes())
-            entries = [ENTRY.unpack_from(table, index * ENTRY.size)
-                       for index in range(10)]
-            self.assertEqual(entries[8][5].rstrip(b"\0"), b"marauder_fs")
-            self.assertEqual((entries[8][3], entries[8][4]),
-                             (0x7D0000, 0x20000))
-            self.assertEqual(entries[9][5].rstrip(b"\0"), b"coredump")
+            self.assertEqual(self.entries(table), [
+                (part["name"], part["offset"], part["size"])
+                for part in self.current
+            ])
+            self.assertIn(("extra", 0x2D0000, 0x480000), self.entries(table))
+            self.assertIn(("mesh_fs", 0x750000, 0x40000), self.entries(table))
+            self.assertIn(("spiffs", 0x7B0000, 0x20000), self.entries(table))
             self.assertEqual(hashlib.sha256(table).hexdigest(),
-                             "419bf358c3e0af02dddf17110f350b67aeb1cda64a253f24d956b5635e7afb92")
+                             CURRENT_TABLE_SHA256)
 
-    def test_rejects_nonblank_marauder_range_and_unexpected_table(self) -> None:
+    def test_migrates_table_from_before_marauder(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             backup = Path(directory) / "backup.bin"
             result = Path(directory) / "partitions.bin"
-            self.make_backup(backup)
+            self.make_backup(backup, self.earlier("mesh_fs", "marauder_fs"))
+            table = prepare_table(backup, result)
+            self.assertEqual(hashlib.sha256(table).hexdigest(),
+                             CURRENT_TABLE_SHA256)
+
+    def test_rejects_nonblank_new_range_and_unexpected_table(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.bin"
+            result = Path(directory) / "partitions.bin"
+            for removed, offset in ((("mesh_fs",), 0x750000),
+                                    (("mesh_fs", "marauder_fs"), 0x7D0000)):
+                self.make_backup(backup, self.earlier(*removed))
+                with backup.open("r+b") as data:
+                    data.seek(offset + 0x100)
+                    data.write(b"x")
+                with self.assertRaisesRegex(FirmwareError, "not blank"):
+                    prepare_table(backup, result)
+                self.assertFalse(result.exists())
+            self.make_backup(backup, self.earlier("mesh_fs"))
             with backup.open("r+b") as data:
-                data.seek(0x7D0000)
-                data.write(b"x")
-            with self.assertRaisesRegex(FirmwareError, "not blank"):
-                prepare_table(backup, result)
-            self.assertFalse(result.exists())
-            with backup.open("r+b") as data:
-                data.seek(0x7D0000)
-                data.write(b"\xff")
                 data.seek(TABLE_OFFSET + 4 * ENTRY.size)
                 data.write(b"x")
             with self.assertRaisesRegex(FirmwareError, "differs"):
+                prepare_table(backup, result)
+            self.assertFalse(result.exists())
+
+    def test_rejects_application_in_extra_that_does_not_fit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.bin"
+            result = Path(directory) / "partitions.bin"
+            self.make_backup(backup, self.earlier("mesh_fs"),
+                             segmented_app(b"x" * 0x480000))
+            with self.assertRaisesRegex(FirmwareError, "does not fit"):
+                prepare_table(backup, result)
+            self.assertFalse(result.exists())
+
+    def test_rejects_backup_that_already_uses_the_current_table(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.bin"
+            result = Path(directory) / "partitions.bin"
+            self.make_backup(backup, self.current)
+            with self.assertRaisesRegex(FirmwareError, "already"):
                 prepare_table(backup, result)
             self.assertFalse(result.exists())
 
@@ -342,6 +456,36 @@ class LocalBuildTest(unittest.TestCase):
                 workspace.resolve() / "cardputer-firmware-manager" / "dist" / "Marauder.bin",
             )
 
+    def test_local_gps_info_uses_pinned_build_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workspace = Path(temporary_directory)
+            (workspace / "cardputer-firmware-manager").mkdir()
+            with mock.patch("firmware_manager.cli.stage_images") as stage:
+                with redirect_stdout(io.StringIO()):
+                    run([
+                        "local", "--app", "gpsinfo", "--workspace",
+                        str(workspace), "--sd", str(workspace),
+                    ])
+            self.assertEqual(
+                stage.call_args.args[1]["gpsinfo"],
+                workspace.resolve() / "cardputer-firmware-manager" / "dist" / "GPSInfo.bin",
+            )
+
+    def test_local_meshtastic_uses_isolated_build_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workspace = Path(temporary_directory)
+            (workspace / "cardputer-firmware-manager").mkdir()
+            with mock.patch("firmware_manager.cli.stage_images") as stage:
+                with redirect_stdout(io.StringIO()):
+                    run([
+                        "local", "--app", "meshtastic", "--workspace",
+                        str(workspace), "--sd", str(workspace),
+                    ])
+            self.assertEqual(
+                stage.call_args.args[1]["meshtastic"],
+                workspace.resolve() / "cardputer-firmware-manager" / "dist" / "Meshtastic.bin",
+            )
+
 
 class StagingTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -393,6 +537,80 @@ class StagingTest(unittest.TestCase):
                              fake_app(b"Bruce", "arduino-lib-builder"))
             self.assertEqual((sd / "firmware" / "Marauder.bin").read_bytes(),
                              marauder.read_bytes())
+
+    def test_staging_gps_info_preserves_unselected_images_and_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            (sd / "firmware").mkdir(parents=True)
+            (sd / ".crub").mkdir()
+            codex = sd / "firmware" / "Codex.bin"
+            codex.write_bytes(fake_app(b"Codex", "codex_microputer_adv"))
+            (sd / ".crub" / "aliases").write_text("custom\necho hello\n")
+            gps = root / "GPSInfo.bin"
+            gps.write_bytes(fake_app(b"Cardputer ADV GPS Info", "arduino-lib-builder"))
+
+            stage_images(self.catalog, {"gpsinfo": gps}, sd,
+                         require_mount=False)
+
+            self.assertEqual(codex.read_bytes(),
+                             fake_app(b"Codex", "codex_microputer_adv"))
+            self.assertEqual((sd / "firmware" / "GPSInfo.bin").read_bytes(),
+                             gps.read_bytes())
+            self.assertIn("custom\necho hello\n", (sd / ".crub" / "aliases").read_text())
+            self.assertIn("upgpsinfo\nflash /firmware/GPSInfo.bin extra\n",
+                          (sd / ".crub" / "aliases").read_text())
+            self.assertIn("GPSINFO\nstart: upgpsinfo -> go",
+                          (sd / "firmwares.txt").read_text())
+
+    def test_rejects_unidentified_gps_info_image_before_writing_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            image = root / "ordinary-firmware.bin"
+            image.write_bytes(fake_app(b"unrelated firmware", "arduino-lib-builder"))
+
+            with self.assertRaisesRegex(FirmwareError, "marker"):
+                stage_images(self.catalog, {"gpsinfo": image}, sd,
+                             require_mount=False)
+
+            self.assertFalse((sd / "firmware").exists())
+
+    def test_staging_meshtastic_preserves_other_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            (sd / "firmware").mkdir(parents=True)
+            bruce = sd / "firmware" / "Bruce.bin"
+            bruce.write_bytes(fake_app(b"Bruce", "arduino-lib-builder"))
+            mesh = root / "Meshtastic.bin"
+            mesh.write_bytes(fake_app(b"Meshtastic mesh_fs mesh_bond", "arduino-lib-builder"))
+
+            stage_images(self.catalog, {"meshtastic": mesh}, sd,
+                         require_mount=False)
+
+            self.assertEqual(bruce.read_bytes(), fake_app(b"Bruce", "arduino-lib-builder"))
+            self.assertEqual((sd / "firmware" / "Meshtastic.bin").read_bytes(),
+                             mesh.read_bytes())
+            self.assertIn("upmesh\nflash /firmware/Meshtastic.bin extra\n",
+                          (sd / ".crub" / "aliases").read_text())
+            self.assertIn("MESHTASTIC\nstart: upmesh -> go",
+                          (sd / "firmwares.txt").read_text())
+
+    def test_rejects_official_meshtastic_image_before_writing_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            image = root / "firmware-m5stack-cardputer-adv.bin"
+            image.write_bytes(fake_app(b"Meshtastic spiffs", "arduino-lib-builder"))
+
+            with self.assertRaisesRegex(FirmwareError, "marker"):
+                stage_images(self.catalog, {"meshtastic": image}, sd,
+                             require_mount=False)
+
+            self.assertFalse((sd / "firmware").exists())
 
     def test_staging_bruce_compact_keeps_release_bruce_on_sd(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -448,12 +666,26 @@ class StagingTest(unittest.TestCase):
                 (sd / "firmwares.txt").read_text(),
                 "FIRMWARES ON SD\n\n"
                 "HUB\nstart: uphub -> hub\n\n"
-                "BRUCE\nstart: upbruce -> go\n",
+                "BRUCE\nstart: upbruce -> go\n\n"
+                "BOOT MODES (apply on reset)\n"
+                "hubfast: auto-boot Hub (USB log)\n"
+                "gofast: auto-boot extra (USB log)\n"
+                "crubmenu: CRUB menu; boot w/o SD 1st\n",
             )
             self.assertIn(
                 "fw\ncat /firmwares.txt\n",
                 (sd / ".crub" / "aliases").read_text(),
             )
+
+    def test_rejects_firmware_list_command_without_a_managed_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            catalog = deepcopy(self.catalog)
+            catalog["firmware_list_commands"]["typo"] = "does nothing"
+            catalog_path = Path(temporary_directory) / "catalog.json"
+            catalog_path.write_text(json.dumps(catalog))
+
+            with self.assertRaisesRegex(FirmwareError, "unknown alias"):
+                load_catalog(catalog_path)
 
     def test_legacy_v1_catalog_still_stages_without_a_firmware_list(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -595,6 +827,10 @@ class StagingTest(unittest.TestCase):
                     "flash /firmware/BruceCompact.bin extra",
                     "upmarauder",
                     "flash /firmware/Marauder.bin extra",
+                    "upgpsinfo",
+                    "flash /firmware/GPSInfo.bin extra",
+                    "upmesh",
+                    "flash /firmware/Meshtastic.bin extra",
                 ],
             )
 
