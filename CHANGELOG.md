@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- List the `hubfast`, `gofast`, and `crubmenu` boot mode aliases in
+  `/firmwares.txt`, so `fw` shows them on the device. The entries come from
+  the catalog's `firmware_list_commands`, which must name managed aliases.
+- Add a local isolated Meshtastic 2.7.26 build for Cardputer ADV with the Cap
+  LoRa-1262 in the shared `extra` slot, staged as `firmware/Meshtastic.bin` and
+  flashed with `upmesh`. Shrink `extra` to 4.5 MiB and give Meshtastic a
+  dedicated 256 KiB `mesh_fs` LittleFS partition at `0x750000`. Patch it so
+  factory reset clears only its own NVS namespaces, Bluetooth bonds use
+  `mesh_bond`, and OTA cannot switch to another app slot. Reject the official
+  image before SD staging.
+- Replace `tools/prepare_marauder_table.py` with
+  `tools/prepare_partition_table.py`, which migrates either earlier CRUB table
+  to the current one and checks that the application in `extra` still fits.
 - Add `brucecompact`, an opt-in local build of Bruce with the Compact UI,
   staged next to the pinned Bruce release as `firmware/BruceCompact.bin` and
   flashed into `extra` with `upbrucec`. It shares Bruce's SD settings and

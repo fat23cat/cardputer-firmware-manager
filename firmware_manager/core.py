@@ -57,7 +57,7 @@ def load_catalog(path: Path) -> Dict[str, Any]:
     for partition in contract:
         if not isinstance(partition, dict) or not partition_fields.issubset(partition):
             raise FirmwareError("firmware catalog has an invalid partition contract")
-    for field in ("aliases", "retired_aliases"):
+    for field in ("aliases", "retired_aliases", "firmware_list_commands"):
         aliases = catalog.get(field, {})
         if not isinstance(aliases, dict) or any(
             not isinstance(value, str) for value in aliases.values()
@@ -132,6 +132,8 @@ def load_catalog(path: Path) -> Dict[str, Any]:
         for app_id, app in catalog["apps"].items():
             if any(alias not in alias_names for alias in app["start"]):
                 raise FirmwareError(f"{app_id}: start sequence uses an unknown alias")
+        if any(alias not in alias_names for alias in catalog.get("firmware_list_commands", {})):
+            raise FirmwareError("firmware list command uses an unknown alias")
     return catalog
 
 
@@ -454,6 +456,11 @@ def stage_images(
             f"{app_id.upper()}\nstart: {' -> '.join(app['start'])}"
             for app_id, app in available
         ) + "\n"
+        commands = catalog.get("firmware_list_commands", {})
+        if commands:
+            list_data += "\nBOOT MODES (apply on reset)\n" + "".join(
+                f"{alias}: {description}\n" for alias, description in commands.items()
+            )
         _atomic_write(firmware_list_path, list_data.encode("utf-8"))
 
     aliases_data = "".join(f"{name}\n{command}\n" for name, command in merged_aliases)

@@ -7,7 +7,9 @@ between [Cardputer Hub](https://github.com/fat23cat/cardputer-hub) and a shared
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
 [Bruce](https://github.com/BruceDevices/firmware) (the pinned release or a local
 [Compact UI build](#bruce-with-compact-ui)),
-[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra), or another
+[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra),
+[Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
+[Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build), or another
 application, and
 prepares safe app-only updates on a FAT32 microSD card.
 
@@ -38,7 +40,8 @@ dedicated `codex` partition, must be migrated once over USB. See
 |---|---|---|---|
 | `test` | `0x10000` | 768 KiB | CRUB |
 | `hub` | `0xd0000` | 2 MiB | Cardputer Hub |
-| `extra` | `0x2d0000` | 4.75 MiB | Codex, Bruce, Bruce Compact, or Marauder, one at a time |
+| `extra` | `0x2d0000` | 4.5 MiB | Codex, Bruce, Bruce Compact, Marauder, GPS Info, or Meshtastic, one at a time |
+| `mesh_fs` | `0x750000` | 256 KiB | Meshtastic LittleFS |
 | `apps_nvs` | `0x790000` | 64 KiB | Codex settings |
 | `hub_config` | `0x7a0000` | 64 KiB | Hub settings |
 | `spiffs` | `0x7b0000` | 128 KiB | Bruce LittleFS |
@@ -46,8 +49,10 @@ dedicated `codex` partition, must be migrated once over USB. See
 
 The existing application offsets and Bruce's `spiffs` partition are unchanged.
 The former reserved range at `0x7d0000-0x7effff` now holds Marauder settings.
-An existing device needs the one-time table update in
-[Install Marauder](docs/install-marauder.md) before launching this build.
+`mesh_fs` takes the last 256 KiB of the former 4.75 MiB `extra` slot. An
+existing device needs the one-time table update in
+[Install Meshtastic](docs/install-meshtastic.md) before launching Marauder or
+Meshtastic. The same prepared table adds both partitions.
 
 ## Quick start
 
@@ -76,9 +81,10 @@ python3 -m firmware_manager local \
   --sd /Volumes/CARDPUTER
 ```
 
-`local --app all` selects Hub and Codex. Marauder requires its isolated build
-and is selected explicitly; Bruce has no local build and is staged with
-`release`. The local Bruce Compact UI build is also selected explicitly; see
+`local --app all` selects Hub and Codex. GPS Info, Marauder, and Meshtastic
+require explicit selection; Marauder and Meshtastic also require their isolated
+builds. Bruce has no local build and is staged with `release`. The local Bruce
+Compact UI build is also selected explicitly; see
 [Bruce with Compact UI](#bruce-with-compact-ui).
 
 Add `--build` to build each selected repository first:
@@ -161,7 +167,7 @@ After staging:
 2. Press any Cardputer key to exit `usbsd`.
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
 4. Run `fw` to read the firmware list on the SD card.
-5. Run `uphub` to update Hub, and `upcodex`, `upbruce`, `upbrucec`, or `upmarauder` to fill `extra`.
+5. Run `uphub` to update Hub, and `upcodex`, `upbruce`, `upbrucec`, `upmarauder`, `upgpsinfo`, or `upmesh` to fill `extra`.
 6. Wait for `app: ok` and `flash complete` after every update command.
 7. Launch Hub with `hub`, or the application in the shared slot with `go`.
 
@@ -177,11 +183,18 @@ start: uphub -> hub
 
 BRUCE
 start: upbruce -> go
+
+BOOT MODES (apply on reset)
+hubfast: auto-boot Hub (USB log)
+gofast: auto-boot extra (USB log)
+crubmenu: CRUB menu; boot w/o SD 1st
 ```
 
 The `up...` command flashes the named image into its application partition;
 the second command launches that partition. In particular, `go` launches
-whichever application is currently in `extra`. You can edit the text file on
+whichever application is currently in `extra`. The boot mode entries come
+from the catalog's `firmware_list_commands` and summarize
+[USB serial diagnostics](#usb-serial-diagnostics). You can edit the text file on
 the SD card, but the next staging run regenerates it from the catalog and the
 images then present. For a permanent new entry, add the application to
 `firmware-manager.json`. The configured list path must be a distinct `.txt`
@@ -208,6 +221,12 @@ go
 
 upmarauder  # later: replace Bruce with isolated Marauder
 go
+
+upgpsinfo   # later: replace Marauder with GPS Info
+go
+
+upmesh      # later: replace GPS Info with isolated Meshtastic
+go
 ```
 
 Hub is never affected. Codex keeps its settings in `apps_nvs` and on the SD
@@ -225,10 +244,40 @@ authenticated releases; build from the pinned source and patch in this repo.
 Marauder's Bluetooth bonds and backlight preference use their own namespaces
 inside the shared default NVS partition; the build does not clear that NVS.
 
+The isolated Meshtastic build keeps its node database and configuration in
+`mesh_fs`, and its Bluetooth bonds in the `mesh_bond` NVS namespace. Its factory
+reset clears only Meshtastic's own NVS namespaces, and its OTA update is
+disabled. The official Meshtastic image and web flasher must not be used on this
+layout. See [Install Meshtastic](docs/install-meshtastic.md).
+
 CRUB does not report which application is in `extra`, and neither can the
-manager, which only sees the SD card. There is deliberately no `codex` or
-`bruce` or `marauder` launch alias, because it would silently start whichever application
+manager, which only sees the SD card. There is deliberately no `codex`,
+`bruce`, `marauder`, `gpsinfo`, or `meshtastic` launch alias, because it would silently start whichever application
 the slot holds.
+
+## Cardputer ADV GPS Info
+
+GPS Info 2.1.0 is built from the pinned upstream revision in
+`firmware-manager.json`. It has no published binary release. The build needs
+PlatformIO (`pio`), GitHub access for the source and dependencies, and enough
+disk space for the Arduino toolchain. In CRUB, run `usbsd`, then on the Mac:
+
+```bash
+python3 -m firmware_manager local --app gpsinfo --build --sd /Volumes/CARDPUTER
+python3 -m firmware_manager doctor --sd /Volumes/CARDPUTER
+```
+
+Safely eject the card, exit `usbsd`, and run `sd`, `fw`, `upgpsinfo`, then `go` on the
+Cardputer. `upgpsinfo` writes only the shared `extra` application partition. Hub
+and the data partitions stay intact; the selected application previously in
+`extra` is replaced, while its image remains on the SD card. To switch back,
+run its `up...` alias followed by `go`.
+
+The upstream firmware expects a Cap LoRa-1262 GPS module on UART2 (RX pin 15,
+TX pin 13, 115200 baud by default). Its on-screen pin and baud configuration
+lasts only until restart. The v2.1.0 source reads the IMU calibration offset
+from the shared default NVS partition but does not erase or initialize it.
+No new partition or layout migration is needed.
 
 An application that is not in the catalog can be flashed into the slot by
 hand. CRUB accepts raw and merged images; `-nospiffs` prevents a merged image
@@ -240,7 +289,7 @@ go
 ```
 
 The manager does not check such images: confirm the SHA-256 yourself and keep
-them within the 4.75 MiB slot.
+them within the 4.5 MiB slot.
 
 ### USB serial diagnostics
 
