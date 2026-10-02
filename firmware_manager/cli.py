@@ -24,7 +24,10 @@ from .core import (
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-DEFAULT_CATALOG = PROJECT / "firmware-manager.json"
+IN_CHECKOUT = (PROJECT / "firmware-manager.json").is_file()
+DEFAULT_CATALOG = (
+    PROJECT if IN_CHECKOUT else Path(__file__).resolve().parent / "data"
+) / "firmware-manager.json"
 
 
 def _build_application(
@@ -74,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     local.add_argument(
         "--workspace",
         type=Path,
-        default=PROJECT.parent,
+        default=PROJECT.parent if IN_CHECKOUT else Path.cwd(),
         help="directory containing the application repositories",
     )
     local.add_argument(
@@ -136,8 +139,9 @@ def _doctor(
     sd_root: Optional[Path],
     *,
     require_mount: bool = True,
+    catalog_root: Path = DEFAULT_CATALOG.parent,
 ) -> None:
-    layout = validate_layout(PROJECT / catalog["layout"], catalog["flash_size"])
+    layout = validate_layout(catalog_root / catalog["layout"], catalog["flash_size"])
     by_name = {partition["name"]: partition for partition in layout}
     for expected in catalog["partition_contract"]:
         partition = by_name.get(expected["name"])
@@ -253,7 +257,7 @@ def run(arguments: Optional[List[str]] = None) -> int:
             print(f"{app_id:8} {app['name']}  {app['repository']}")
         return 0
     if args.command == "doctor":
-        _doctor(catalog, args.sd)
+        _doctor(catalog, args.sd, catalog_root=args.catalog.expanduser().resolve().parent)
         return 0
 
     selected = resolve_apps(catalog, args.app)

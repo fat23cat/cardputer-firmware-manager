@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Reject incomplete ESP segments and footers, incorrect XOR checksums, and
+  incorrect embedded SHA-256 digests before SD staging and during `doctor`.
+- Prevent partition-table preparation from overwriting its full-device input
+  backup, including through symbolic and hard links.
+- Bundle the canonical catalog and partition layout in installed wheels,
+  resolve custom layouts relative to their catalog, and test the installed
+  CLI from a wheel built from a source archive in CI.
 - List the `hubfast`, `gofast`, and `crubmenu` boot mode aliases in
   `/firmwares.txt`, so `fw` shows them on the device. The entries come from
   the catalog's `firmware_list_commands`, which must name managed aliases.
