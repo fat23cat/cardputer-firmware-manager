@@ -30,6 +30,23 @@ other data partitions.
 
 No third-party Python packages are required.
 
+To install the CLI in a Python environment, run `python3 -m pip install .`
+from this checkout. The installed `cardputer-firmware` command includes the
+catalog and partition layout, so `cardputer-firmware list` and
+`cardputer-firmware doctor` work outside the repository. Local builds still
+need the application checkouts and their build tools. Set `--workspace` to
+their parent directory, for example:
+
+```bash
+cardputer-firmware local --app hub --workspace /path/to/personal \
+  --sd /Volumes/CARDPUTER
+```
+
+When run from this checkout, the default workspace remains its parent
+directory. For an installed CLI, it defaults to the current directory. A
+custom `--catalog /path/to/catalog.json` resolves its relative `layout` path
+against the directory containing that catalog.
+
 Devices provisioned with the earlier layout, which had a 2.5 MiB `hub` and a
 dedicated `codex` partition, must be migrated once over USB. See
 [Migrate from the dedicated Codex layout](docs/install-crub.md#migrate-from-the-dedicated-codex-layout).
@@ -379,6 +396,10 @@ Before writing to the SD card, the manager:
 - accepts only raw ESP application images whose app descriptor identifies the
   selected managed application, after extracting the application from a
   verified merged release image when the catalog says the release is merged;
+- checks that every ESP segment and footer is complete, verifies the segment
+  XOR checksum and, when present, the image's embedded SHA-256; truncated or
+  corrupt images are rejected by both staging and `doctor --sd`, even if the
+  SD metadata records their current digest;
 - rejects images larger than their assigned partition;
 - verifies every copy and later `doctor --sd` run against SHA-256 metadata;
 - verifies GitHub's asset digest or a published checksum asset, and the
@@ -402,3 +423,9 @@ make check
 ```
 
 The project intentionally uses only the Python standard library.
+The wheel smoke test additionally needs the build tools `setuptools>=68`
+and `wheel`; install them with `python3 -m pip install 'setuptools>=68' wheel`.
+With those tools available, `make check` builds a wheel from a source archive
+and runs the installed CLI outside the checkout. Otherwise that test is
+skipped. CI installs the build tools and runs it on both supported Python
+versions in its matrix.

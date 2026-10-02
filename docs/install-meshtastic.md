@@ -63,6 +63,9 @@ only `0xff` bytes. It also checks that the application currently in `extra`
 fits the 4.5 MiB slot. It writes `dist/crub-partitions.bin` and does not
 contact the Cardputer. Its SHA-256 must be
 `5c58e277a18e12a593da289becd9206441e759329df4bbb024758b05ff0ec16c`.
+If you supply `--output`, use a separate file: the tool refuses an output
+that refers to the input backup, including symbolic or hard links, so the
+full recovery copy stays intact.
 
 Enter ROM download mode by holding `G0` while pressing Reset, then release
 `G0`. Use the serial port from the backup command. Write **only** the prepared

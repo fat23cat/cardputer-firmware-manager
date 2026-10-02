@@ -40,16 +40,12 @@ CURRENT_TABLE_SHA256 = (
 def fake_app(
     payload: bytes = b"payload", project_name: str = "cardputer_hub"
 ) -> bytes:
-    image = bytearray(0x70)
-    image[0] = 0xE9
-    image[0x20:0x24] = b"\x32\x54\xcd\xab"
-    encoded_project_name = project_name.encode("ascii")
-    image[0x50 : 0x50 + len(encoded_project_name)] = encoded_project_name
-    return bytes(image) + payload
+    return segmented_app(payload, project_name)
 
 
 def segmented_app(
-    payload: bytes = b"payload", project_name: str = "arduino-lib-builder"
+    payload: bytes = b"payload", project_name: str = "arduino-lib-builder",
+    *, hash_appended: bool = True, extra_segments: tuple = (),
 ) -> bytes:
     descriptor = bytearray(0x100)
     descriptor[0:4] = b"\x32\x54\xcd\xab"
@@ -59,11 +55,16 @@ def segmented_app(
     segment += b"\0" * (-len(segment) % 4)
     header = bytearray(24)
     header[0] = 0xE9
-    header[1] = 1
-    header[23] = 1
-    image = bytes(header) + struct.pack("<II", 0x3C000020, len(segment)) + segment
-    image += b"\0" * (15 - len(image) % 16) + b"\xa5"
-    return image + hashlib.sha256(image).digest()
+    header[1] = 1 + len(extra_segments)
+    header[23] = int(hash_appended)
+    image = bytes(header)
+    checksum = 0xEF
+    for data in (segment,) + extra_segments:
+        image += struct.pack("<II", 0x3C000020, len(data)) + data
+        for byte in data:
+            checksum ^= byte
+    image += b"\0" * (15 - len(image) % 16) + bytes([checksum])
+    return image + hashlib.sha256(image).digest() if hash_appended else image
 
 
 def merged_image(app: bytes) -> bytes:
@@ -346,6 +347,90 @@ class PartitionTableTest(unittest.TestCase):
             with self.assertRaisesRegex(FirmwareError, "already"):
                 prepare_table(backup, result)
             self.assertFalse(result.exists())
+
+    def test_preserves_backup_when_output_refers_to_the_same_file(self) -> None:
+        for kind in ("same path", "symlink", "hard link"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                backup = Path(directory) / "backup.bin"
+                self.make_backup(backup, self.earlier("mesh_fs"))
+                original = backup.read_bytes()
+                output = Path(directory) / "output.bin"
+                if kind == "same path":
+                    output = backup
+                elif kind == "symlink":
+                    output.symlink_to(backup)
+                else:
+                    os.link(backup, output)
+
+                with self.assertRaisesRegex(FirmwareError, "backup"):
+                    prepare_table(backup, output)
+
+                self.assertEqual(backup.read_bytes(), original)
+
+
+class ImageIntegrityTest(unittest.TestCase):
+    def test_rejects_truncated_and_corrupt_images_before_changing_sd(self) -> None:
+        catalog = load_catalog(ROOT / "firmware-manager.json")
+        valid = fake_app(b"x" * 256)
+        corrupt_payload = bytearray(valid)
+        corrupt_payload[0x120] ^= 1
+        corrupt_digest = bytearray(valid)
+        corrupt_digest[-1] ^= 1
+        corrupt_checksum = bytearray(valid)
+        corrupt_checksum[-33] ^= 1
+        # Recompute the hash so the XOR checksum must be checked independently.
+        corrupt_checksum[-32:] = hashlib.sha256(corrupt_checksum[:-32]).digest()
+        malformed = []
+        for index, value in ((1, 0), (1, 17), (23, 2)):
+            data = bytearray(valid)
+            data[index] = value
+            malformed.append(bytes(data))
+        for data in (valid[:0x130], valid[:-33], valid[:-1],
+                     bytes(corrupt_payload), bytes(corrupt_digest),
+                     bytes(corrupt_checksum), *malformed):
+            with self.subTest(size=len(data)), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                sd = root / "card"
+                sd.mkdir()
+                image = root / "hub.bin"
+                image.write_bytes(data)
+                previous = sd / catalog["apps"]["hub"]["sd_path"]
+                previous.parent.mkdir()
+                previous.write_bytes(valid)
+
+                with self.assertRaises(FirmwareError):
+                    stage_images(catalog, {"hub": image}, sd, require_mount=False)
+
+                self.assertEqual(previous.read_bytes(), valid)
+                self.assertFalse((sd / ".crub").exists())
+                self.assertFalse((sd / "firmwares.txt").exists())
+
+    def test_accepts_multiple_segments_with_and_without_appended_hash(self) -> None:
+        for hashed in (False, True):
+            with self.subTest(hashed=hashed), tempfile.TemporaryDirectory() as directory:
+                image = Path(directory) / "hub.bin"
+                image.write_bytes(segmented_app(
+                    project_name="cardputer_hub", hash_appended=hashed,
+                    extra_segments=(b"\x01\x02\x03\x04", b"\x05\x06\x07\x08"),
+                ))
+                validate_image("hub", image, 0x200000, "cardputer_hub")
+
+    def test_doctor_rejects_truncated_image_even_with_matching_sd_metadata(self) -> None:
+        catalog = load_catalog(ROOT / "firmware-manager.json")
+        with tempfile.TemporaryDirectory() as directory:
+            sd = Path(directory)
+            image = sd / catalog["apps"]["hub"]["sd_path"]
+            image.parent.mkdir()
+            data = fake_app(b"x" * 256)[:0x130]
+            image.write_bytes(data)
+            digest = hashlib.sha256(data).hexdigest()
+            (image.parent / "SHA256SUMS").write_text(f"{digest}  {image.name}\n")
+            (image.parent / "firmware-manager-lock.json").write_text(json.dumps({
+                "schema_version": 1, "apps": {"hub": {"sha256": digest}}
+            }))
+
+            with self.assertRaisesRegex(FirmwareError, "truncated"):
+                _doctor(catalog, sd, require_mount=False)
 
 
 class LocalBuildTest(unittest.TestCase):

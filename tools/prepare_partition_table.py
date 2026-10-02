@@ -74,6 +74,10 @@ def earlier_layouts(partitions: Sequence[dict]) -> List[Tuple[str, List[dict]]]:
 
 
 def prepare_table(backup: Path, output: Path) -> bytes:
+    if backup.resolve() == output.resolve() or (
+        output.exists() and backup.samefile(output)
+    ):
+        raise FirmwareError("output must not overwrite the full backup")
     catalog = load_catalog(ROOT / "firmware-manager.json")
     partitions = catalog["partition_contract"]
     if backup.stat().st_size != FLASH_SIZE:

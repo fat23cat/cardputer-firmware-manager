@@ -58,7 +58,9 @@ python3 tools/prepare_partition_table.py /path/to/cardputer-adv-backup.bin
 ```
 
 It writes `dist/crub-partitions.bin` and does not contact the Cardputer. The
-current table also shrinks `extra` to 4.5 MiB and adds Meshtastic's `mesh_fs`;
+input backup is preserved; `--output` cannot refer to it through the same
+path, a symbolic link, or a hard link. The current table also shrinks `extra`
+to 4.5 MiB and adds Meshtastic's `mesh_fs`;
 see [Install Meshtastic](install-meshtastic.md) for the details and the
 expected SHA-256.
 Review its SHA-256 and the backup path. Enter ROM download mode by holding

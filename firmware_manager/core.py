@@ -258,13 +258,40 @@ def validate_image(
         raise FirmwareError(
             f"{app_id}: image is {image_size} bytes; partition limit is {partition_size}"
         )
-    if required_marker and required_marker.encode("ascii") not in image.read_bytes():
+    data = image.read_bytes()
+    length = _esp_image_length(data)
+    if length is None:
+        raise FirmwareError(f"{app_id}: invalid or truncated ESP application image")
+    # ESP images XOR only segment data, starting at 0xEF. The checksum is
+    # the last byte of the 16-byte-aligned image, before its optional SHA-256.
+    position = 24
+    checksum = 0xEF
+    for _segment in range(data[1]):
+        _load_address, segment_size = struct.unpack_from("<II", data, position)
+        position += 8
+        for byte in data[position : position + segment_size]:
+            checksum ^= byte
+        position += segment_size
+    checksum_end = length - 32 if data[23] else length
+    if data[checksum_end - 1] != checksum:
+        raise FirmwareError(f"{app_id}: ESP image checksum mismatch")
+    if (
+        data[23]
+        and hashlib.sha256(data[:checksum_end]).digest() != data[checksum_end:length]
+    ):
+        raise FirmwareError(f"{app_id}: ESP image SHA-256 mismatch")
+    if required_marker and required_marker.encode("ascii") not in data:
         raise FirmwareError(f"{app_id}: required image marker is missing")
 
 
 def _esp_image_length(image: bytes) -> Optional[int]:
     """Return the length of the ESP application image at the start of image."""
-    if len(image) < 24 or image[0:1] != ESP_IMAGE_MAGIC or image[1] > 16:
+    if (
+        len(image) < 24
+        or image[0:1] != ESP_IMAGE_MAGIC
+        or not 1 <= image[1] <= 16
+        or image[23] not in (0, 1)
+    ):
         return None
     position = 24
     for _segment in range(image[1]):
@@ -272,6 +299,8 @@ def _esp_image_length(image: bytes) -> Optional[int]:
             return None
         _load_address, length = struct.unpack_from("<II", image, position)
         position += 8 + length
+        if position > len(image):
+            return None
     position = (position + 16) & ~15
     if image[23]:
         position += 32

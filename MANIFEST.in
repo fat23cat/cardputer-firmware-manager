@@ -1,0 +1,2 @@
+include firmware-manager.json
+include layouts/*.csv
