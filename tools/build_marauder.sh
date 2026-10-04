@@ -96,7 +96,7 @@ import sys
 from firmware_manager.core import validate_image
 
 image = Path(sys.argv[1])
-validate_image("marauder", image, 0x480000, "arduino-lib-builder", "marauder_fs")
+validate_image("marauder", image, 0x680000, "arduino-lib-builder", "marauder_fs")
 if b"marauder_bond" not in image.read_bytes():
     raise SystemExit("isolated Marauder Bluetooth namespace missing from image")
 PY

@@ -33,7 +33,7 @@ from tools.prepare_partition_table import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_TABLE_SHA256 = (
-    "5c58e277a18e12a593da289becd9206441e759329df4bbb024758b05ff0ec16c"
+    "c5414c7821983a08fc6861fd484b7829a90fd9c63886ecfd317c4ac621a63603"
 )
 
 
@@ -112,15 +112,25 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(partition["size"], app["partition_size"])
             self.assertEqual(partition["type"], "app")
 
-    def test_hub_keeps_two_megabytes_and_other_firmware_shares_extra(self) -> None:
+    def test_every_application_including_hub_uses_one_extra_slot(self) -> None:
         partitions = validate_layout(ROOT / self.catalog["layout"], 0x800000)
         by_name = {
             partition["name"]: (partition["offset"], partition["size"])
             for partition in partitions
         }
 
-        self.assertEqual(by_name["hub"], (0xD0000, 0x200000))
-        self.assertEqual(by_name["extra"], (0x2D0000, 0x480000))
+        self.assertNotIn("hub", by_name)
+        self.assertEqual(by_name["extra"], (0xD0000, 0x680000))
+        self.assertEqual(
+            {partition["name"] for partition in partitions
+             if partition["type"] == "app"}, {"test", "extra"}
+        )
+        for app in self.catalog["apps"].values():
+            self.assertEqual(app["partition"], "extra")
+            self.assertEqual(app["partition_size"], 0x680000)
+            self.assertEqual(app["start"][1], "go")
+        self.assertEqual(self.catalog["apps"]["hub"]["aliases"]["uphub"],
+                         "flash /firmware/cardputer-hub.bin extra")
         self.assertEqual(by_name["mesh_fs"], (0x750000, 0x40000))
         self.assertEqual(by_name["apps_nvs"], (0x790000, 0x10000))
         self.assertEqual(by_name["hub_config"], (0x7A0000, 0x10000))
@@ -136,7 +146,7 @@ class CatalogTest(unittest.TestCase):
         marauder = self.catalog["apps"]["marauder"]
 
         self.assertEqual(marauder["partition"], "extra")
-        self.assertEqual(marauder["partition_size"], 0x480000)
+        self.assertEqual(marauder["partition_size"], 0x680000)
         self.assertEqual(marauder["repository"], "fat23cat/ESP32Marauder")
         self.assertEqual(marauder["source_revision"],
                          "940ebfd380a464dd09184b2d561c11e59898922c")
@@ -156,7 +166,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(gps["source_revision"],
                          "f16b636ec657b8d1c3fd264544c376a7e6c2a5ad")
         self.assertEqual(gps["partition"], "extra")
-        self.assertEqual(gps["partition_size"], 0x480000)
+        self.assertEqual(gps["partition_size"], 0x680000)
         self.assertEqual(gps["project_name"], "arduino-lib-builder")
         self.assertEqual(gps["required_image_marker"], "Cardputer ADV GPS Info")
         self.assertEqual(gps["sd_path"], "firmware/GPSInfo.bin")
@@ -178,7 +188,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(mesh["source_revision"],
                          "54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb")
         self.assertEqual(mesh["partition"], "extra")
-        self.assertEqual(mesh["partition_size"], 0x480000)
+        self.assertEqual(mesh["partition_size"], 0x680000)
         self.assertEqual(mesh["project_name"], "arduino-lib-builder")
         self.assertEqual(mesh["required_image_marker"], "mesh_bond")
         self.assertEqual(mesh["sd_path"], "firmware/Meshtastic.bin")
@@ -258,101 +268,71 @@ class PartitionTableTest(unittest.TestCase):
         self.catalog = load_catalog(ROOT / "firmware-manager.json")
         self.current = self.catalog["partition_contract"]
 
-    def earlier(self, *removed: str) -> list:
-        return [
-            dict(partition, size=0x4C0000) if partition["name"] == "extra"
-            else dict(partition)
-            for partition in self.current
-            if partition["name"] not in removed
-        ]
-
-    def make_backup(self, destination: Path, partitions: list,
-                    extra_image: bytes = b"") -> None:
+    def make_backup(self, destination: Path, *, old_layout: bool = False) -> None:
+        partitions = deepcopy(self.current)
+        if old_layout:
+            extra = next(p for p in partitions if p["name"] == "extra")
+            extra.update(subtype="ota_1", offset=0x2D0000, size=0x480000)
+            partitions.insert(3, dict(name="hub", type="app", subtype="ota_0",
+                                      offset=0xD0000, size=0x200000))
         data = bytearray(b"\xff" * FLASH_SIZE)
         table = encode_table(partitions)
         data[TABLE_OFFSET : TABLE_OFFSET + len(table)] = table
-        data[0x2D0000 : 0x2D0000 + len(extra_image)] = extra_image
-        destination.write_bytes(bytes(data))
+        destination.write_bytes(data)
 
-    def entries(self, table: bytes) -> list:
-        rows = []
-        for index in range(len(self.current)):
-            row = ENTRY.unpack_from(table, index * ENTRY.size)
-            rows.append((row[5].rstrip(b"\0").decode(), row[3], row[4]))
-        return rows
-
-    def test_shrinks_extra_and_adds_mesh_fs_to_marauder_table(self) -> None:
+    def test_blank_table_generation_needs_no_backup_and_has_no_hub(self) -> None:
+        from tools.prepare_partition_table import main
         with tempfile.TemporaryDirectory() as directory:
-            backup = Path(directory) / "backup.bin"
-            result = Path(directory) / "partitions.bin"
-            self.make_backup(backup, self.earlier("mesh_fs"),
-                             segmented_app(b"x" * 0x1000))
-            table = prepare_table(backup, result)
-            self.assertEqual(table, result.read_bytes())
-            self.assertEqual(self.entries(table), [
-                (part["name"], part["offset"], part["size"])
-                for part in self.current
-            ])
-            self.assertIn(("extra", 0x2D0000, 0x480000), self.entries(table))
-            self.assertIn(("mesh_fs", 0x750000, 0x40000), self.entries(table))
-            self.assertIn(("spiffs", 0x7B0000, 0x20000), self.entries(table))
+            output = Path(directory) / "partitions.bin"
+            with mock.patch("sys.argv", ["prepare_partition_table.py", "--blank",
+                                         "--output", str(output)]):
+                with redirect_stdout(io.StringIO()):
+                    main()
+            table = output.read_bytes()
+            self.assertEqual(table, encode_table(self.current))
             self.assertEqual(hashlib.sha256(table).hexdigest(),
                              CURRENT_TABLE_SHA256)
+            self.assertEqual(len(table), 0xC00)
+            self.assertEqual(ENTRY.unpack_from(table, 3 * ENTRY.size)[3:5],
+                             (0xD0000, 0x680000))
+            entries = table[:len(self.current) * ENTRY.size]
+            self.assertEqual(table[len(entries)+16:len(entries)+32],
+                             hashlib.md5(entries).digest())
 
-    def test_migrates_table_from_before_marauder(self) -> None:
+    def test_rejects_table_only_migration_from_dedicated_hub(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             backup = Path(directory) / "backup.bin"
-            result = Path(directory) / "partitions.bin"
-            self.make_backup(backup, self.earlier("mesh_fs", "marauder_fs"))
-            table = prepare_table(backup, result)
-            self.assertEqual(hashlib.sha256(table).hexdigest(),
-                             CURRENT_TABLE_SHA256)
-
-    def test_rejects_nonblank_new_range_and_unexpected_table(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            backup = Path(directory) / "backup.bin"
-            result = Path(directory) / "partitions.bin"
-            for removed, offset in ((("mesh_fs",), 0x750000),
-                                    (("mesh_fs", "marauder_fs"), 0x7D0000)):
-                self.make_backup(backup, self.earlier(*removed))
-                with backup.open("r+b") as data:
-                    data.seek(offset + 0x100)
-                    data.write(b"x")
-                with self.assertRaisesRegex(FirmwareError, "not blank"):
-                    prepare_table(backup, result)
-                self.assertFalse(result.exists())
-            self.make_backup(backup, self.earlier("mesh_fs"))
-            with backup.open("r+b") as data:
-                data.seek(TABLE_OFFSET + 4 * ENTRY.size)
-                data.write(b"x")
-            with self.assertRaisesRegex(FirmwareError, "differs"):
-                prepare_table(backup, result)
-            self.assertFalse(result.exists())
-
-    def test_rejects_application_in_extra_that_does_not_fit(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            backup = Path(directory) / "backup.bin"
-            result = Path(directory) / "partitions.bin"
-            self.make_backup(backup, self.earlier("mesh_fs"),
-                             segmented_app(b"x" * 0x480000))
-            with self.assertRaisesRegex(FirmwareError, "does not fit"):
-                prepare_table(backup, result)
-            self.assertFalse(result.exists())
+            output = Path(directory) / "partitions.bin"
+            self.make_backup(backup, old_layout=True)
+            before = backup.read_bytes()
+            with self.assertRaisesRegex(FirmwareError, "erase.*reprovision"):
+                prepare_table(backup, output)
+            self.assertFalse(output.exists())
+            self.assertEqual(backup.read_bytes(), before)
 
     def test_rejects_backup_that_already_uses_the_current_table(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             backup = Path(directory) / "backup.bin"
-            result = Path(directory) / "partitions.bin"
-            self.make_backup(backup, self.current)
+            output = Path(directory) / "partitions.bin"
+            self.make_backup(backup)
             with self.assertRaisesRegex(FirmwareError, "already"):
-                prepare_table(backup, result)
-            self.assertFalse(result.exists())
+                prepare_table(backup, output)
+            self.assertFalse(output.exists())
+
+    def test_rejects_short_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "backup.bin"
+            output = Path(directory) / "partitions.bin"
+            backup.write_bytes(b"short")
+            with self.assertRaisesRegex(FirmwareError, "exactly 8 MiB"):
+                prepare_table(backup, output)
+            self.assertFalse(output.exists())
 
     def test_preserves_backup_when_output_refers_to_the_same_file(self) -> None:
         for kind in ("same path", "symlink", "hard link"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
                 backup = Path(directory) / "backup.bin"
-                self.make_backup(backup, self.earlier("mesh_fs"))
+                self.make_backup(backup, old_layout=True)
                 original = backup.read_bytes()
                 output = Path(directory) / "output.bin"
                 if kind == "same path":
@@ -361,10 +341,8 @@ class PartitionTableTest(unittest.TestCase):
                     output.symlink_to(backup)
                 else:
                     os.link(backup, output)
-
                 with self.assertRaisesRegex(FirmwareError, "backup"):
                     prepare_table(backup, output)
-
                 self.assertEqual(backup.read_bytes(), original)
 
 
@@ -750,10 +728,9 @@ class StagingTest(unittest.TestCase):
             self.assertEqual(
                 (sd / "firmwares.txt").read_text(),
                 "FIRMWARES ON SD\n\n"
-                "HUB\nstart: uphub -> hub\n\n"
+                "HUB\nstart: uphub -> go\n\n"
                 "BRUCE\nstart: upbruce -> go\n\n"
                 "BOOT MODES (apply on reset)\n"
-                "hubfast: auto-boot Hub (USB log)\n"
                 "gofast: auto-boot extra (USB log)\n"
                 "crubmenu: CRUB menu; boot w/o SD 1st\n",
             )
@@ -874,7 +851,8 @@ class StagingTest(unittest.TestCase):
             aliases.parent.mkdir(parents=True)
             aliases.write_text(
                 "music\nbeep 440 100\n"
-                "hub\nold command\n"
+                "hub\nlaunch -f hub\n"
+                "hubfast\necho launch -f > /.crub/boot\n"
                 "codex\nlaunch -f codex\n"
                 "codexfast\necho launch -f codex > /.crub/boot\n"
                 "extra\nlaunch -f extra\n"
@@ -894,16 +872,24 @@ class StagingTest(unittest.TestCase):
                     "launch -f hub",
                     "hubfast",
                     "echo launch -f > /.crub/boot",
-                    "crubmenu",
-                    "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
+                    "codex",
+                    "launch -f codex",
+                    "codexfast",
+                    "echo launch -f codex > /.crub/boot",
+                    "extra",
+                    "launch -f extra",
+                    "extrafast",
+                    "echo launch -f extra > /.crub/boot",
                     "fw",
                     "cat /firmwares.txt",
                     "go",
                     "launch -f extra",
                     "gofast",
                     "echo launch -f extra > /.crub/boot",
+                    "crubmenu",
+                    "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
                     "uphub",
-                    "flash /firmware/cardputer-hub.bin hub",
+                    "flash /firmware/cardputer-hub.bin extra",
                     "upcodex",
                     "flash /firmware/Codex.bin extra",
                     "upbruce",
@@ -919,22 +905,21 @@ class StagingTest(unittest.TestCase):
                 ],
             )
 
-    def test_keeps_user_alias_that_reuses_a_retired_managed_name(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            temporary = Path(temporary_directory)
-            sd = temporary / "card"
-            sd.mkdir()
-            aliases = sd / ".crub" / "aliases"
-            aliases.parent.mkdir(parents=True)
-            aliases.write_text("codex\necho my codex\n")
-            hub = temporary / "hub.bin"
-            hub.write_bytes(fake_app())
-
-            stage_images(self.catalog, {"hub": hub}, sd, require_mount=False)
-
-            self.assertEqual(
-                aliases.read_text().splitlines()[:2], ["codex", "echo my codex"]
-            )
+    def test_keeps_user_alias_with_an_unmanaged_name(self) -> None:
+        for alias in ("codex", "hub", "hubfast"):
+            with self.subTest(alias=alias), tempfile.TemporaryDirectory() as directory:
+                temporary = Path(directory)
+                sd = temporary / "card"
+                sd.mkdir()
+                aliases = sd / ".crub" / "aliases"
+                aliases.parent.mkdir(parents=True)
+                command = f"echo my {alias}"
+                aliases.write_text(f"{alias}\n{command}\n")
+                hub = temporary / "hub.bin"
+                hub.write_bytes(fake_app())
+                stage_images(self.catalog, {"hub": hub}, sd, require_mount=False)
+                self.assertEqual(aliases.read_text().splitlines()[:2],
+                                 [alias, command])
 
     def test_rejects_invalid_and_oversized_images_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1096,7 +1081,7 @@ class DoctorTest(unittest.TestCase):
         lines = output.getvalue().splitlines()
         self.assertLess(
             lines.index("remount the card in CRUB with 'sd', then run:"),
-            lines.index("  uphub"),
+            next(i for i, line in enumerate(lines) if line.startswith("  uphub")),
         )
         self.assertIn("  fw (list firmware on SD)", lines)
 
@@ -1109,11 +1094,8 @@ class DoctorTest(unittest.TestCase):
 
         lines = output.getvalue().splitlines()
         self.assertEqual(
-            lines[-2:],
-            [
-                "  uphub",
-                "  upcodex or upbruce (shared partition extra; flash only one)",
-            ],
+            lines[-1],
+            "  uphub or upcodex or upbruce (shared partition extra; flash only one)",
         )
 
 

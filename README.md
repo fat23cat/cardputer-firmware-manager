@@ -2,16 +2,18 @@
 
 Host-side firmware bundle manager for an 8 MiB M5Stack Cardputer ADV running
 [CRUB](https://github.com/wisnc/crub). It owns the shared partition contract
-between [Cardputer Hub](https://github.com/fat23cat/cardputer-hub) and a shared
-`extra` application slot that holds
+for one shared `extra` application slot that holds
+[Cardputer Hub](https://github.com/fat23cat/cardputer-hub),
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
 [Bruce](https://github.com/BruceDevices/firmware) (the pinned release or a local
 [Compact UI build](#bruce-with-compact-ui)),
 [ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra),
 [Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
 [Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build), or another
-application, and
-prepares safe app-only updates on a FAT32 microSD card.
+application. It prepares safe app-only updates on a FAT32 microSD card. A clean
+installation
+contains only CRUB; `extra` starts empty. Hub is installed and replaced just
+like every other application.
 
 The manager does **not** write the Cardputer's internal flash. It validates and
 stages images on the SD card; CRUB performs the final `flash` command on the
@@ -47,29 +49,28 @@ directory. For an installed CLI, it defaults to the current directory. A
 custom `--catalog /path/to/catalog.json` resolves its relative `layout` path
 against the directory containing that catalog.
 
-Devices provisioned with the earlier layout, which had a 2.5 MiB `hub` and a
-dedicated `codex` partition, must be migrated once over USB. See
-[Migrate from the dedicated Codex layout](docs/install-crub.md#migrate-from-the-dedicated-codex-layout).
+Devices with an earlier dedicated `hub` or `codex` partition need a one-time
+[clean installation over USB](docs/install-crub.md#clean-installation).
+Replacing only the partition table is insufficient: the `extra` address changed.
+Routine `local` and `release` commands continue to stage SD files only.
 
 ## Partition layout
 
 | Partition | Offset | Size | Contents |
 |---|---|---|---|
 | `test` | `0x10000` | 768 KiB | CRUB |
-| `hub` | `0xd0000` | 2 MiB | Cardputer Hub |
-| `extra` | `0x2d0000` | 4.5 MiB | Codex, Bruce, Bruce Compact, Marauder, GPS Info, or Meshtastic, one at a time |
+| `extra` (`ota_0`) | `0xd0000` | 6.5 MiB | Hub, Codex, Bruce, Bruce Compact, Marauder, GPS Info, or Meshtastic, one at a time; initially empty |
 | `mesh_fs` | `0x750000` | 256 KiB | Meshtastic LittleFS |
 | `apps_nvs` | `0x790000` | 64 KiB | Codex settings |
 | `hub_config` | `0x7a0000` | 64 KiB | Hub settings |
 | `spiffs` | `0x7b0000` | 128 KiB | Bruce LittleFS |
 | `marauder_fs` | `0x7d0000` | 128 KiB | Marauder SPIFFS settings |
 
-The existing application offsets and Bruce's `spiffs` partition are unchanged.
-The former reserved range at `0x7d0000-0x7effff` now holds Marauder settings.
-`mesh_fs` takes the last 256 KiB of the former 4.75 MiB `extra` slot. An
-existing device needs the one-time table update in
-[Install Meshtastic](docs/install-meshtastic.md) before launching Marauder or
-Meshtastic. The same prepared table adds both partitions.
+There is no dedicated Hub application partition. All settings partitions keep
+their addresses from the previous Hub + 4.5 MiB `extra` layout. A clean install
+clears internal settings; later app-only switches preserve them. The SD images
+are independent of the application slot's address and need no rebuild for this
+layout change.
 
 ## Quick start
 
@@ -123,10 +124,10 @@ python3 -m firmware_manager local --app hub --sd /Volumes/CARDPUTER
 python3 -m firmware_manager local --app codex --sd /Volumes/CARDPUTER
 ```
 
-After preparing the Marauder partition table, build and stage the isolated
+With the current shared layout installed, build and stage the isolated
 Marauder image with `local --app marauder --build`. Follow
-[Install Marauder](docs/install-marauder.md) for the build tools and one-time
-device migration. The official Marauder release image must not be used with
+[Install Marauder](docs/install-marauder.md) for the build tools and device
+layout. The official Marauder release image must not be used with
 this layout because it formats Bruce's default `spiffs` partition.
 
 ## GitHub Releases
@@ -184,9 +185,9 @@ After staging:
 2. Press any Cardputer key to exit `usbsd`.
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
 4. Run `fw` to read the firmware list on the SD card.
-5. Run `uphub` to update Hub, and `upcodex`, `upbruce`, `upbrucec`, `upmarauder`, `upgpsinfo`, or `upmesh` to fill `extra`.
+5. Choose exactly one updater: `uphub`, `upcodex`, `upbruce`, `upbrucec`, `upmarauder`, `upgpsinfo`, or `upmesh`. All write `extra`.
 6. Wait for `app: ok` and `flash complete` after every update command.
-7. Launch Hub with `hub`, or the application in the shared slot with `go`.
+7. Run `go` to launch the application currently in `extra`.
 
 Every `local` or `release` staging run writes `/firmwares.txt` with the managed
 images currently present on the card, and adds `fw` as an alias for
@@ -196,13 +197,12 @@ images currently present on the card, and adds `fw` as an alias for
 FIRMWARES ON SD
 
 HUB
-start: uphub -> hub
+start: uphub -> go
 
 BRUCE
 start: upbruce -> go
 
 BOOT MODES (apply on reset)
-hubfast: auto-boot Hub (USB log)
 gofast: auto-boot extra (USB log)
 crubmenu: CRUB menu; boot w/o SD 1st
 ```
@@ -221,13 +221,35 @@ and `start` still stage images, without generating this list.
 CRUB treats `&&` as an unconditional separator, so update aliases never chain
 an automatic launch.
 
-## The shared extra slot
+### Existing SD cards from the dedicated Hub layout
 
-`extra` holds one application at a time. Every staged image stays on the SD
-card, so switching only rewrites the slot:
+The old `uphub` alias targets a partition that no longer exists. Until the next
+staging run refreshes the aliases, use these direct CRUB commands:
 
 ```text
-upcodex     # Codex into extra
+sd
+flash /firmware/cardputer-hub.bin extra
+launch -f extra
+```
+
+The direct commands use the existing image as-is. Other existing `up...`
+aliases that explicitly target `extra` still work; `go` still launches it.
+The old `hub` and `hubfast` aliases should no longer be used. A staging run
+updates `uphub` and preserves unrelated aliases, unselected firmware images,
+and `/.crub/boot`. If that boot
+file previously enabled automatic app launch, restore the CRUB menu using
+`crubmenu` as described below.
+
+## The shared extra slot
+
+`extra` holds one application at a time, including Hub. Every staged image stays
+on the SD card, so switching only rewrites the slot:
+
+```text
+uphub       # Hub into extra
+go
+
+upcodex     # later: replace Hub with Codex
 go          # launch it
 
 upbruce     # later: replace Codex with Bruce
@@ -246,7 +268,8 @@ upmesh      # later: replace GPS Info with isolated Meshtastic
 go
 ```
 
-Hub is never affected. Codex keeps its settings in `apps_nvs` and on the SD
+Switching replaces the current application, including Hub. Hub keeps its
+settings in `hub_config`. Codex keeps its settings in `apps_nvs` and on the SD
 card, so they survive a switch to Bruce and back. Bruce keeps its files on the
 SD card and its internal settings in `spiffs`. Bruce can mount that LittleFS
 partition only with the QIO CRUB bootloader; with upstream CRUB's DIO
@@ -254,7 +277,7 @@ bootloader, **Files → LittleFS** returns to the main menu and Bruce's settings
 reset on every boot.
 
 The isolated Marauder build keeps its settings in `marauder_fs`. Its built-in
-firmware updater is disabled because the next OTA slot is Hub. Use CRUB's
+firmware updater is disabled; this layout has a single OTA slot. Use CRUB's
 `upmarauder` command for later Marauder updates. The manager checks for the
 `marauder_bond` image marker before staging this build, but local builds are not
 authenticated releases; build from the pinned source and patch in this repo.
@@ -268,7 +291,7 @@ disabled. The official Meshtastic image and web flasher must not be used on this
 layout. See [Install Meshtastic](docs/install-meshtastic.md).
 
 CRUB does not report which application is in `extra`, and neither can the
-manager, which only sees the SD card. There is deliberately no `codex`,
+manager, which only sees the SD card. There is deliberately no `hub`, `codex`,
 `bruce`, `marauder`, `gpsinfo`, or `meshtastic` launch alias, because it would silently start whichever application
 the slot holds.
 
@@ -285,8 +308,8 @@ python3 -m firmware_manager doctor --sd /Volumes/CARDPUTER
 ```
 
 Safely eject the card, exit `usbsd`, and run `sd`, `fw`, `upgpsinfo`, then `go` on the
-Cardputer. `upgpsinfo` writes only the shared `extra` application partition. Hub
-and the data partitions stay intact; the selected application previously in
+Cardputer. `upgpsinfo` writes only the shared `extra` application partition.
+The data partitions stay intact; the selected application previously in
 `extra` is replaced, while its image remains on the SD card. To switch back,
 run its `up...` alias followed by `go`.
 
@@ -306,29 +329,22 @@ go
 ```
 
 The manager does not check such images: confirm the SHA-256 yourself and keep
-them within the 4.5 MiB slot.
+them within the 6.5 MiB slot.
 
 ### USB serial diagnostics
 
 CRUB normally initializes its USB mass-storage device before an application is
 launched. If an application's USB Serial/JTAG console does not enumerate after
-the `hub` or `go` alias, run:
-
-```text
-hubfast
-```
-
-or
+`go`, run:
 
 ```text
 gofast
 ```
 
-Then reset the Cardputer. `hubfast` replaces `/.crub/boot` with `launch -f`;
-`gofast` replaces it with `launch -f extra` (`extra` is not CRUB's default
-boot partition, so it must be named explicitly). Either way, the target app
-starts before CRUB initializes USB and continues to start automatically on
-later resets.
+Then reset the Cardputer. `gofast` replaces `/.crub/boot` with
+`launch -f extra`. The current application starts before CRUB initializes USB
+and continues to start automatically on later resets. This mode is optional;
+normal provisioning leaves CRUB as the boot menu.
 
 To restore the normal CRUB boot screen, power off the Cardputer, remove the
 microSD card, and power it on again. Reinsert the card, run `sd`, then run:
@@ -338,7 +354,7 @@ crubmenu
 ```
 
 Reset once more. `crubmenu` restores the default `boots 1500` and `fetch` boot
-commands. All three aliases are installed by the next `local` or `release`
+commands. Both aliases are installed by the next `local` or `release`
 staging run; none of them writes the Cardputer's internal flash.
 
 ## Bruce with Compact UI
@@ -404,9 +420,7 @@ Before writing to the SD card, the manager:
 - verifies every copy and later `doctor --sd` run against SHA-256 metadata;
 - verifies GitHub's asset digest or a published checksum asset, and the
   catalog's pinned SHA-256 when it downloads a pinned release;
-- merges its managed aliases without deleting unrelated user aliases, and removes
-  the retired `codex`, `codexfast`, `extra`, and `extrafast` aliases only while
-  they still hold their original managed commands;
+- merges its managed aliases without deleting unrelated user aliases;
 - preserves firmware for applications that were not selected;
 - rejects firmware list paths that overlap application images or CRUB files;
 - writes `firmware/SHA256SUMS`, `firmware/firmware-manager-lock.json`, and
