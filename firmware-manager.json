@@ -13,8 +13,7 @@
     {"name": "nvs", "type": "data", "subtype": "nvs", "offset": 36864, "size": 20480},
     {"name": "otadata", "type": "data", "subtype": "ota", "offset": 57344, "size": 8192},
     {"name": "test", "type": "app", "subtype": "test", "offset": 65536, "size": 786432},
-    {"name": "hub", "type": "app", "subtype": "ota_0", "offset": 851968, "size": 2097152},
-    {"name": "extra", "type": "app", "subtype": "ota_1", "offset": 2949120, "size": 4718592},
+    {"name": "extra", "type": "app", "subtype": "ota_0", "offset": 851968, "size": 6815744},
     {"name": "mesh_fs", "type": "data", "subtype": "spiffs", "offset": 7667712, "size": 262144},
     {"name": "apps_nvs", "type": "data", "subtype": "nvs", "offset": 7929856, "size": 65536},
     {"name": "hub_config", "type": "data", "subtype": "nvs", "offset": 7995392, "size": 65536},
@@ -25,18 +24,12 @@
   "aliases": {
     "fw": "cat /firmwares.txt",
     "go": "launch -f extra",
-    "gofast": "echo launch -f extra > /.crub/boot"
+    "gofast": "echo launch -f extra > /.crub/boot",
+    "crubmenu": "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot"
   },
   "firmware_list_commands": {
-    "hubfast": "auto-boot Hub (USB log)",
     "gofast": "auto-boot extra (USB log)",
     "crubmenu": "CRUB menu; boot w/o SD 1st"
-  },
-  "retired_aliases": {
-    "codex": "launch -f codex",
-    "codexfast": "echo launch -f codex > /.crub/boot",
-    "extra": "launch -f extra",
-    "extrafast": "echo launch -f extra > /.crub/boot"
   },
   "apps": {
     "hub": {
@@ -58,16 +51,13 @@
       "local_image": "build/cardputer_hub.bin",
       "release_asset": "cardputer-hub-v(?!.*-partitions\\.bin$).+\\.bin",
       "checksum_asset": "SHA256SUMS",
-      "partition": "hub",
-      "partition_size": 2097152,
+      "partition": "extra",
+      "partition_size": 6815744,
       "project_name": "cardputer_hub",
       "sd_path": "firmware/cardputer-hub.bin",
-      "start": ["uphub", "hub"],
+      "start": ["uphub", "go"],
       "aliases": {
-        "hub": "launch -f hub",
-        "hubfast": "echo launch -f > /.crub/boot",
-        "crubmenu": "echo boots 1500 > /.crub/boot && echo fetch >> /.crub/boot",
-        "uphub": "flash /firmware/cardputer-hub.bin hub"
+        "uphub": "flash /firmware/cardputer-hub.bin extra"
       }
     },
     "codex": {
@@ -90,7 +80,7 @@
       "release_asset": "Codex\\.bin",
       "checksum_asset": "Codex.bin.sha256",
       "partition": "extra",
-      "partition_size": 4718592,
+      "partition_size": 6815744,
       "project_name": "codex_microputer_adv",
       "sd_path": "firmware/Codex.bin",
       "start": ["upcodex", "go"],
@@ -108,7 +98,7 @@
         "sha256": "e0a06966e601fecdb78470168b423690392f5ca14502a703588d4d14d0722033"
       },
       "partition": "extra",
-      "partition_size": 4718592,
+      "partition_size": 6815744,
       "project_name": "arduino-lib-builder",
       "sd_path": "firmware/Bruce.bin",
       "start": ["upbruce", "go"],
@@ -124,7 +114,7 @@
       "local_image": "dist/BruceCompact.bin",
       "default_local": false,
       "partition": "extra",
-      "partition_size": 4718592,
+      "partition_size": 6815744,
       "project_name": "arduino-lib-builder",
       "required_image_marker": "Compact UI: ",
       "sd_path": "firmware/BruceCompact.bin",
@@ -142,7 +132,7 @@
       "local_image": "dist/Marauder.bin",
       "default_local": false,
       "partition": "extra",
-      "partition_size": 4718592,
+      "partition_size": 6815744,
       "project_name": "arduino-lib-builder",
       "required_image_marker": "marauder_bond",
       "sd_path": "firmware/Marauder.bin",
@@ -160,7 +150,7 @@
       "local_image": "dist/GPSInfo.bin",
       "default_local": false,
       "partition": "extra",
-      "partition_size": 4718592,
+      "partition_size": 6815744,
       "project_name": "arduino-lib-builder",
       "required_image_marker": "Cardputer ADV GPS Info",
       "sd_path": "firmware/GPSInfo.bin",
@@ -178,7 +168,7 @@
       "local_image": "dist/Meshtastic.bin",
       "default_local": false,
       "partition": "extra",
-      "partition_size": 4718592,
+      "partition_size": 6815744,
       "project_name": "arduino-lib-builder",
       "required_image_marker": "mesh_bond",
       "sd_path": "firmware/Meshtastic.bin",

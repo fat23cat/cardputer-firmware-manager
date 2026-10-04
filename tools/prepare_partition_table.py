@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare, but never flash, the current CRUB partition table from a full backup."""
+"""Prepare the CRUB-only layout for a clean installation; never contact the device."""
 
 from __future__ import annotations
 
@@ -8,14 +8,13 @@ import hashlib
 import struct
 import sys
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from firmware_manager.core import (  # noqa: E402
     FirmwareError,
-    _esp_image_length,
     load_catalog,
 )
 
@@ -24,7 +23,6 @@ ENTRY = struct.Struct("<HBBII16sI")
 TABLE_OFFSET = 0x8000
 TABLE_SIZE = 0xC00
 FLASH_SIZE = 0x800000
-EXTRA_SIZE_BEFORE_MESHTASTIC = 0x4C0000
 SUBTYPES = {
     "nvs": (1, 0x02),
     "ota": (1, 0x00),
@@ -55,24 +53,6 @@ def encode_table(partitions: Sequence[dict]) -> bytes:
     return (entries + footer).ljust(TABLE_SIZE, b"\xff")
 
 
-def earlier_layouts(partitions: Sequence[dict]) -> List[Tuple[str, List[dict]]]:
-    """Return the CRUB tables this tool may replace, newest first."""
-    before_meshtastic = [
-        dict(partition, size=EXTRA_SIZE_BEFORE_MESHTASTIC)
-        if partition["name"] == "extra" else dict(partition)
-        for partition in partitions
-        if partition["name"] != "mesh_fs"
-    ]
-    before_marauder = [
-        partition for partition in before_meshtastic
-        if partition["name"] != "marauder_fs"
-    ]
-    return [
-        ("before Meshtastic", before_meshtastic),
-        ("before Marauder", before_marauder),
-    ]
-
-
 def prepare_table(backup: Path, output: Path) -> bytes:
     if backup.resolve() == output.resolve() or (
         output.exists() and backup.samefile(output)
@@ -87,49 +67,32 @@ def prepare_table(backup: Path, output: Path) -> bytes:
     result = encode_table(partitions)
     if installed == result:
         raise FirmwareError("backup already uses the current partition table")
-    previous = next(
-        (layout for _, layout in earlier_layouts(partitions)
-         if encode_table(layout) == installed),
-        None,
+    raise FirmwareError(
+        "changing to the single extra slot requires a full erase and reprovision; "
+        "a partition-table-only migration would leave applications at wrong addresses. "
+        "Use --blank only with the clean-install procedure in docs/install-crub.md"
     )
-    if previous is None:
-        raise FirmwareError("backup partition table differs from the expected CRUB layouts")
-
-    old: Dict[str, dict] = {partition["name"]: partition for partition in previous}
-    extra = next(partition for partition in partitions if partition["name"] == "extra")
-    old_extra = old["extra"]
-    length = _esp_image_length(
-        flash[old_extra["offset"] : old_extra["offset"] + old_extra["size"]]
-    )
-    if length is not None and length > extra["size"]:
-        raise FirmwareError(
-            f"application in extra is {length} bytes and does not fit "
-            f"the new {extra['size']}-byte slot"
-        )
-    for partition in partitions:
-        if partition["name"] in old:
-            continue
-        start = partition["offset"]
-        region = flash[start : start + partition["size"]]
-        if region.count(0xFF) != len(region):
-            raise FirmwareError(
-                f"future {partition['name']} range is not blank in the backup"
-            )
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(result)
-    return result
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("backup", type=Path, help="exact 8 MiB full-device backup")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("backup", nargs="?", type=Path,
+                        help="check a previous backup; table-only migration is refused")
+    source.add_argument("--blank", action="store_true",
+                        help="generate the table for a full erase and CRUB-only install")
     parser.add_argument(
         "--output", type=Path, default=ROOT / "dist" / "crub-partitions.bin"
     )
     args = parser.parse_args()
     try:
-        data = prepare_table(args.backup, args.output)
+        if args.blank:
+            catalog = load_catalog(ROOT / "firmware-manager.json")
+            data = encode_table(catalog["partition_contract"])
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_bytes(data)
+        else:
+            data = prepare_table(args.backup, args.output)
     except (FirmwareError, OSError) as error:
         parser.exit(2, f"error: {error}\n")
     print(f"prepared {args.output}: SHA-256 {hashlib.sha256(data).hexdigest()}")

@@ -20,8 +20,8 @@ repository:
 - `patches/meshtastic-crub.patch` mounts LittleFS only on `mesh_fs`. On a
   factory reset with Bluetooth bonds, it clears only Meshtastic's NVS
   namespaces (`meshtastic`, `MeshtasticOTA`, `MeshtasticHTTPS`, and
-  `mesh_bond`). It also disables the OTA loader switch: on this layout,
-  `ota_1` is `extra` itself and `ota_0` is Hub.
+  `mesh_bond`). It also disables the OTA loader switch: applications are
+  installed through CRUB into the single `extra` slot.
 - `patches/nimble-meshtastic-crub.patch` changes NimBLE-Arduino 1.4.3 to
   store Bluetooth bonds in the `mesh_bond` namespace, not the shared
   `nimble_bond`. It checks stored record sizes and never erases the shared
@@ -43,47 +43,14 @@ application size, the ESP project name, and the embedded `mesh_fs` and
 `local --app all` continues to select only Hub and Codex; select Meshtastic
 explicitly.
 
-## Add the settings partition once
+## Required layout
 
-`mesh_fs` takes the last 256 KiB of the former 4.75 MiB `extra` slot, which
-shrinks to 4.5 MiB. The offsets of all other partitions stay the same. Do this
-only on a Cardputer that already uses this repository's CRUB layout. The step
-changes the internal partition table, so first make a fresh
-[complete 8 MiB backup](install-crub.md#back-up-the-complete-device). Keep the
-backup outside the SD card. Then prepare the table from that backup:
-
-```bash
-python3 tools/prepare_partition_table.py /path/to/cardputer-adv-backup.bin
-```
-
-The tool accepts either the earlier ten-partition table (with `marauder_fs`)
-or the nine-partition table without it. In the second case, the result also
-adds `marauder_fs`. The tool checks that every new partition range contains
-only `0xff` bytes. It also checks that the application currently in `extra`
-fits the 4.5 MiB slot. It writes `dist/crub-partitions.bin` and does not
-contact the Cardputer. Its SHA-256 must be
-`5c58e277a18e12a593da289becd9206441e759329df4bbb024758b05ff0ec16c`.
-If you supply `--output`, use a separate file: the tool refuses an output
-that refers to the input backup, including symbolic or hard links, so the
-full recovery copy stays intact.
-
-Enter ROM download mode by holding `G0` while pressing Reset, then release
-`G0`. Use the serial port from the backup command. Write **only** the prepared
-table and verify it:
-
-```bash
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-  --baud 115200 --before default_reset --after hard_reset write_flash \
-  0x8000 dist/crub-partitions.bin
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-  verify_flash 0x8000 dist/crub-partitions.bin
-```
-
-Press Reset if the display stays dark. CRUB `pt info` must show `extra` at
-`0x2d0000` with size `0x480000` and `mesh_fs` at `0x750000` with size
-`0x40000`. `hub`, `apps_nvs`, `hub_config`, `spiffs`, `marauder_fs`, and
-`coredump` keep their previous offsets and sizes. Do not erase any existing
-partition. Meshtastic formats the blank `mesh_fs` on its first launch.
+Use the current CRUB-only layout: `extra` at `0xd0000`, size `0x680000`,
+with `mesh_fs` at `0x750000` (256 KiB) and `marauder_fs` at `0x7d0000`
+(128 KiB). It includes both settings partitions from the start. If the device
+still has a dedicated `hub` partition, follow the
+[clean installation procedure](install-crub.md#clean-installation) once.
+Do not replace only the table: the application address has changed.
 
 ## Stage and start Meshtastic
 
@@ -105,12 +72,12 @@ go
 ```
 
 `upmesh` writes only `extra`. The Hub, Codex, Bruce, and other images remain on
-the SD card. If Meshtastic is launched before the table update, it cannot
+the SD card. If Meshtastic is launched with a layout missing `mesh_fs`, it cannot
 mount `mesh_fs`: it shows **Critical fault #13** (flash corruption,
 unrecoverable) and reboots whenever it saves a setting, for example the LoRa
-region. Other partitions are not touched. Update the table as above, then
-press Reset; the image in `extra` does not need to be flashed again. To switch back, run `upbruce`, `upcodex`, or another `up...`
-alias, then `go`.
+region. Other partitions are not touched. Install the current CRUB layout as
+above, then reinstall the application into `extra`. To switch back, run
+`upbruce`, `upcodex`, or another `up...` alias, then `go`.
 
 ## First setup
 
@@ -135,5 +102,5 @@ Meshtastic's NVS namespaces. A Meshtastic factory reset clears only those.
 last 20 messages, and configuration. Wi-Fi and PHY calibration data use the
 ESP-IDF namespaces in the default NVS, as with every other Wi-Fi application.
 
-If the table update fails or CRUB does not boot, restore the complete backup
+If provisioning fails or CRUB does not boot, restore the complete backup
 using [Recovery](install-crub.md#recovery).

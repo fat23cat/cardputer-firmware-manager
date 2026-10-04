@@ -1,15 +1,13 @@
 # Install or recover CRUB
 
-This is the one-time provisioning procedure for an M5Stack Cardputer ADV with
-an 8 MiB flash chip. It installs CRUB and Cardputer Hub in their own
-application partitions, and Codex Microputer ADV, Bruce, or isolated Marauder in the shared `extra`
-slot. A device that already runs the earlier dedicated Codex layout follows
-[Migrate from the dedicated Codex layout](#migrate-from-the-dedicated-codex-layout)
-instead of the first-install steps.
+The current 8 MiB Cardputer ADV layout installs only CRUB. Every application,
+including Cardputer Hub, uses one shared `extra` slot at `0xd0000`, size
+`0x680000` (6.5 MiB). That slot starts empty. Hardware Reset enters CRUB;
+an application runs only after it has been flashed and launched.
 
-Changing the bootloader or partition table can temporarily make the installed
-firmware unbootable. ESP32-S3 ROM download mode remains available because this
-procedure does not write eFuses, enable Secure Boot, or enable Flash Encryption.
+Older dedicated Hub or Codex layouts require a clean installation. Replacing
+only their partition table leaves application images at incompatible addresses.
+Routine `local` and `release` commands remain SD-only.
 
 ## Back up the complete device
 
@@ -28,7 +26,9 @@ Reading is slow over USB-Serial/JTAG: a Cardputer ADV read all 8 MiB at about
 the file only when the read finishes, so keep its progress output visible
 rather than treating a quiet terminal as a hang.
 
-Keep at least one verified copy outside the device's microSD card.
+If you want to keep existing device data, retain a verified copy outside the
+SD card. A clean installation deliberately discards internal applications
+and settings; skip this backup only when those contents are not needed.
 
 ## Build CRUB with the shared layout
 
@@ -81,7 +81,7 @@ the bootloader switches the flash to QIO.
 
 The bootloader uses the pioarduino `55.03.39` platform (ESP-IDF 5.5.4), which
 needs PlatformIO Core 6.1.x. The launcher keeps CRUB's floating `stable`
-platform, which now needs PlatformIO Core 6.2.0 or newer; `pio run` from
+platform, which used PlatformIO Core 6.2.0 in the verified build; `pio run` from
 PlatformIO 6.1.x fails there with `IncompatiblePlatform`. Both builds run
 PlatformIO through [`uv`](https://docs.astral.sh/uv/) with private core
 directories, so neither a global PlatformIO installation nor its packages for
@@ -94,189 +94,133 @@ Keep the bootloader's separate `build_dir`: PlatformIO cleans the whole build
 directory when a different project configuration is used, so building both
 into `.pio/build` deletes whichever was built first.
 
-Before writing, check that `.pio/build/m5cardputer/partitions.bin` contains the
-expected `hub`, `extra`, `apps_nvs`, `hub_config`, `spiffs`, and `marauder_fs` offsets, and
-that `.pio/build/m5cardputer/firmware.bin` fits the `test` partition
-(`0xc0000` bytes). The QIO bootloader is 22,528 bytes and must end before
-`0x8000`.
+Before writing, run `python3 -m firmware_manager doctor` in the manager
+checkout. The table must have exactly two app partitions: CRUB's `test` at
+`0x10000` (768 KiB), and `extra` (`ota_0`) at `0xd0000` (6.5 MiB). There
+must be no `hub` or `codex` app partition. Settings partitions stay at the
+addresses shown in the README.
 
-Write the bootloader, generated shared table, and launcher using the same port
-that was used for the backup:
+The CRUB application must fit `0xc0000` bytes. The verified 3.1.0 local
+build is 753,760 bytes; its upstream release asset is too large for this slot.
+The QIO bootloader is 22,528 bytes and must end before `0x8000`. A verified
+existing QIO bootloader and raw CRUB application can be reused: both find the
+partition table at runtime. Raw application images on SD also need no rebuild
+for the changed `extra` offset.
+
+## Clean installation
+
+This step erases **all internal flash**, including application settings. It
+leaves the microSD card untouched. Remove the card before provisioning; insert
+it again only after CRUB has started. No application is installed by this step.
+
+Generate the table in the firmware-manager checkout:
 
 ```bash
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-  --baud 115200 --before default_reset --after hard_reset write_flash -z \
-  0x0 .pio/build-qio/bootloader/bootloader.bin \
-  0x8000 .pio/build/m5cardputer/partitions.bin \
-  0x10000 .pio/build/m5cardputer/firmware.bin
+python3 tools/prepare_partition_table.py --blank
 ```
 
-Verify the three written ranges with `esptool verify_flash` before continuing.
+This command only writes `dist/crub-partitions.bin` on the host. Its SHA-256 is
+`c5414c7821983a08fc6861fd484b7829a90fd9c63886ecfd317c4ac621a63603`.
+The tool refuses a table-only migration from old backups. `--blank` is for
+this full erase procedure, not for replacing a live table on its own.
 
-The automatic reset at the end of an esptool command over USB-Serial/JTAG can
-leave the Cardputer with a dark screen instead of starting CRUB. Press and
-release Reset once; CRUB should then start. Check the table from CRUB with
-`pt info`, and never run `pt write` or `pt reset` there.
+Build a complete 8 MiB image on the host. `--fill-flash-size 8MB` fills all
+unused ranges with `0xff`, including the entire `extra` slot and settings:
 
-The first installation intentionally discards settings. In CRUB, initialize the
-three NVS partitions and clear leftovers from any earlier layout in Bruce's
-`spiffs` partition:
+```bash
+python -m esptool --chip esp32s3 merge_bin \
+  --output dist/crub-only-8mb.bin --fill-flash-size 8MB \
+  0x0 /path/to/crub/.pio/build-qio/bootloader/bootloader.bin \
+  0x8000 dist/crub-partitions.bin \
+  0x10000 /path/to/crub/.pio/build/m5cardputer/firmware.bin
+```
+
+Hold `G0`, press and release Reset, then release `G0`. Substitute the actual
+serial port. Write the complete image and verify all 8 MiB before Reset:
+
+```bash
+python -m esptool --chip esp32s3 --port /dev/cu.usbmodem101 --no-stub \
+  --baud 460800 --before no_reset --after no_reset write_flash -z \
+  0x0 dist/crub-only-8mb.bin
+python -m esptool --chip esp32s3 --port /dev/cu.usbmodem101 --no-stub \
+  --before no_reset --after no_reset verify_flash \
+  0x0 dist/crub-only-8mb.bin
+```
+
+Writing the full image erases and rewrites the complete internal flash.
+A separate `erase_flash` command is unnecessary and is unsupported by the
+ESP32-S3 ROM when using `--no-stub`.
+
+Press Reset. CRUB should start. Check `pt info`: `extra` must start at
+`0xd0000` and have size `0x680000`. `launch -f extra` should report
+`nothing flashed` until an application is installed. Do not use CRUB's
+`pt write` or `pt reset`: they replace this shared layout.
+
+## Install applications from SD
+
+Insert the existing FAT32 SD card and run `sd`. Existing raw application
+images can be installed as-is. For example, install Hub:
 
 ```text
-erase nvs
-erase apps_nvs
-erase hub_config
-erase spiffs
-erase marauder_fs
+flash /firmware/cardputer-hub.bin extra
+launch -f extra
 ```
 
-Do not repeat those commands during normal application updates.
-
-## Prepare and install applications
-
-Format the microSD card as FAT32, run `usbsd`, and use this repository's
-manager to stage local builds or GitHub Releases. Safely eject the volume, exit
-`usbsd`, remount the card and reload aliases with `sd`, then run:
+To replace Hub with Codex, return to CRUB with Reset and run:
 
 ```text
-sd
-fw
-uphub
-upcodex
+flash /firmware/Codex.bin extra
+launch -f extra
 ```
 
-`fw` reads `/firmwares.txt`, the list of images staged on the SD card and
-their update and launch commands. Each `up...` command must report `app: ok`
-and `flash complete`. Use `upbruce` instead
-of `upcodex` to put Bruce in `extra`; both images can stay on the card. See
-[Install Marauder](install-marauder.md) and
-[Install Meshtastic](install-meshtastic.md) for their isolated builds.
+The current app is replaced; SD image files and the data partitions are kept.
+The previous layout's `uphub` alias still names the removed `hub` partition,
+so use the direct command until the aliases have been refreshed. Other old
+updater aliases that target `extra` keep working.
 
-## Migrate from the dedicated Codex layout
+To refresh SD images and aliases intentionally, use CRUB `usbsd` and a normal
+`local` or `release` staging command. Eject the volume, leave `usbsd`, run
+`sd`, then choose one `up...` command followed by `go`. Every updater,
+including `uphub`, writes only `extra`. Staging preserves unrelated aliases
+and unselected images. Obsolete `hub`/`hubfast` aliases on an old card can be
+removed manually from `/.crub/aliases`.
 
-The earlier layout had a 2.5 MiB `hub`, a dedicated `codex` partition at
-`0x350000`, `apps_nvs` at `0x550000`, `hub_config` at `0x560000`, a 512 KiB
-`vfs`, and a 1 MiB `spiffs`. The current layout keeps `hub` at `0xd0000`,
-replaces `codex` with the 4.5 MiB `extra` slot, and moves both settings
-partitions to the end of flash. It also gives Marauder its own `marauder_fs`
-partition at `0x7d0000` and Meshtastic its own `mesh_fs` partition at
-`0x750000`. Copying the NVS partitions preserves Hub and Codex settings.
+An existing `/.crub/boot` file is kept during SD staging. If it enables automatic
+app launch, restore the normal menu: boot once without the card, reinsert it,
+run `sd`, then `crubmenu` (after alias refresh), and Reset. Without refreshed
+aliases, use the direct equivalent:
 
-1. If `codexfast` is active, restore the CRUB menu with `crubmenu` first. The
-   boot command `launch -f codex` has no target after migration.
-2. [Back up the complete device](#back-up-the-complete-device).
-3. Save both settings partitions from their old offsets with the same port:
+```text
+echo boots 1500 > /.crub/boot
+echo fetch >> /.crub/boot
+```
 
-   ```bash
-   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-     read_flash 0x550000 0x10000 apps_nvs.bin
-   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-     read_flash 0x560000 0x10000 hub_config.bin
-   ```
-
-4. [Build CRUB with the shared layout](#build-crub-with-the-shared-layout) from
-   this revision of the repository.
-5. Write the QIO bootloader, the new table, the rebuilt launcher, and both
-   settings partitions at their new offsets:
-
-   ```bash
-   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-     --baud 115200 --before default_reset --after hard_reset write_flash -z \
-     0x0 .pio/build-qio/bootloader/bootloader.bin \
-     0x8000 .pio/build/m5cardputer/partitions.bin \
-     0x10000 .pio/build/m5cardputer/firmware.bin \
-     0x790000 apps_nvs.bin \
-     0x7a0000 hub_config.bin
-   ```
-
-6. Verify the five written ranges with `esptool verify_flash`.
-7. Boot CRUB and clear the new `spiffs`, `marauder_fs`, and `mesh_fs` ranges,
-   which hold leftovers from the old layout. Do not erase `nvs`, `apps_nvs`, or
-   `hub_config`:
-
-   ```text
-   erase spiffs
-   erase marauder_fs
-   erase mesh_fs
-   ```
-
-8. Stage Hub, Codex, and optionally Bruce with this repository's manager, then
-   in CRUB run `sd`, `uphub`, and `upcodex` or `upbruce`. Staging also removes
-   the retired `codex` and `codexfast` aliases. Launch the slot with `go`.
-
-If anything fails, restore the full backup as described under
-[Recovery](#recovery).
+These two commands intentionally update the SD boot script. They are separate
+from USB provisioning, which never accesses the card.
 
 ## Replace only the bootloader
 
-A device that already runs this layout with upstream CRUB's DIO bootloader
-keeps its applications and settings when only the bootloader changes. Build the
-QIO bootloader as above, enter ROM download mode, and write `0x0` alone:
-
-```bash
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 \
-  --before no_reset --after no_reset write_flash \
-  0x0 .pio/build-qio/bootloader/bootloader.bin
-```
-
-Press Reset: CRUB must start, and **Files → LittleFS** in Bruce must open. The
-first mount may find a filesystem the DIO bootloader left behind; Bruce then
-keeps settings changed from that point on.
+For a device already using the current layout, replacing a DIO bootloader
+with the reviewed QIO bootloader does not require erasing flash. Write and
+verify only `0x0`, leaving the table, CRUB, `extra`, and settings in place.
+The bootloader must end before `0x8000`.
 
 ## Updating CRUB
 
-Never flash CRUB's stock `partitions.bin` after adopting this layout. Rebuild
-every reviewed CRUB revision with `layouts/cardputer-adv-8mb.csv`, verify that
-the launcher image fits the `test` partition (`0xc0000` bytes), and retain a
-full backup. A routine `local` or `release` command cannot update CRUB.
-
-For an existing installation with this shared layout and the QIO bootloader,
-update to the pinned 3.1.0 revision without replacing the bootloader or
-partition table:
-
-1. [Back up the complete device](#back-up-the-complete-device). Confirm that
-   the file is exactly 8,388,608 bytes and keep it outside the Cardputer SD.
-2. [Build CRUB with the shared layout](#build-crub-with-the-shared-layout).
-   The `firmware.bin` asset attached to the upstream 3.1.0 release is shown as
-   about 794 KB, larger than this layout's 768 KiB `test` partition. Do not
-   flash that release asset. A local build on 2026-09-29 using pioarduino
-   `stable` 55.3.312 produced a 753,760-byte launcher.
-3. Check the size of the newly built launcher before writing:
-
-   ```bash
-   python - <<'PY'
-   from pathlib import Path
-   image = Path('.pio/build/m5cardputer/firmware.bin')
-   size = image.stat().st_size
-   print(f'CRUB launcher: {size} / 786432 bytes')
-   if size > 0xc0000:
-       raise SystemExit('launcher exceeds the test partition; do not flash')
-   PY
-   ```
-
-4. Enter ROM download mode and write only the launcher at `0x10000`, using the
-   same port as the backup:
-
-   ```bash
-   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-     --baud 115200 --before default_reset --after hard_reset write_flash -z \
-     0x10000 .pio/build/m5cardputer/firmware.bin
-   python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-     verify_flash 0x10000 .pio/build/m5cardputer/firmware.bin
-   ```
-
-5. Press Reset if the screen stays dark. In CRUB, run `fetch` to check that
-   the version is 3.1.0 and `pt info` to inspect the unchanged layout. Launch
-   Hub and the application in `extra` to check them. Keep the SD card's
-   `/.crub/` directory; 3.1.0 stores its configuration and saved IR codes
-   there.
+On a device already using this layout, a CRUB update writes only the raw
+application at `0x10000`. Verify the reviewed version and its image integrity,
+check that it fits `0xc0000`, and verify the written range before Reset.
+Keep a backup if the existing internal contents matter. Never flash CRUB's
+stock partition table or a merged release image over this shared layout.
+A routine `local` or `release` command cannot update CRUB.
 
 ## Recovery
 
-If no firmware boots, hold `G0`, press and release Reset, then release `G0`.
-Restore the exact full backup through the ROM download port:
+Hold `G0`, press and release Reset, then release `G0`. ROM download mode
+remains available. Repeat the clean installation, or restore a verified full
+8 MiB backup when you want its previous layout and contents:
 
 ```bash
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
+python -m esptool --chip esp32s3 --port /dev/cu.usbmodem101 --no-stub \
   write_flash 0x0 cardputer-adv-backup.bin
 ```

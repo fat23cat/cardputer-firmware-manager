@@ -63,7 +63,7 @@ import sys
 from firmware_manager.core import validate_image
 
 image = Path(sys.argv[1])
-validate_image("meshtastic", image, 0x480000, "arduino-lib-builder", "mesh_bond")
+validate_image("meshtastic", image, 0x680000, "arduino-lib-builder", "mesh_bond")
 if b"mesh_fs" not in image.read_bytes():
     raise SystemExit("isolated Meshtastic filesystem label missing from image")
 PY

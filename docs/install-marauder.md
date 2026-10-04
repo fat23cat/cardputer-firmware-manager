@@ -11,7 +11,7 @@ layout, that is Bruce's LittleFS partition, so the official image may erase
 Bruce settings. The isolated build pins the
 [Cardputer CRUB fork](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra),
 based on upstream Marauder 1.17.0. It mounts the new `marauder_fs` label and disables Marauder's own firmware
-updater. Its OTA updater would otherwise select Hub as the next app partition.
+updater. Updates are installed through CRUB into the single `extra` slot.
 The build also gives Marauder's Bluetooth bonds and backlight preference
 separate namespaces in the existing default NVS partition. It checks stored
 Bluetooth record sizes and never erases the shared NVS while initializing
@@ -44,43 +44,14 @@ and embedded `marauder_fs` and `marauder_bond` labels. This step touches only th
 host computer. `local --app all` continues to select Hub and Codex; select
 Marauder explicitly.
 
-## Add the settings partition once
+## Required layout
 
-Do this only on a Cardputer already running the shared CRUB layout in this
-repository. The following step changes the internal partition table, so make
-a fresh [complete 8 MiB backup](install-crub.md#back-up-the-complete-device)
-first. Keep the backup outside the SD card. The preparation tool checks that
-the current table is exactly an earlier CRUB table from this repository and
-that every new range contains only `0xff` bytes:
-
-```bash
-python3 tools/prepare_partition_table.py /path/to/cardputer-adv-backup.bin
-```
-
-It writes `dist/crub-partitions.bin` and does not contact the Cardputer. The
-input backup is preserved; `--output` cannot refer to it through the same
-path, a symbolic link, or a hard link. The current table also shrinks `extra`
-to 4.5 MiB and adds Meshtastic's `mesh_fs`;
-see [Install Meshtastic](install-meshtastic.md) for the details and the
-expected SHA-256.
-Review its SHA-256 and the backup path. Enter ROM download mode by holding
-`G0` while pressing Reset, then release `G0`. Use the serial port from the
-backup command. Write **only** the prepared table and verify it:
-
-```bash
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-  --baud 115200 --before default_reset --after hard_reset write_flash \
-  0x8000 dist/crub-partitions.bin
-python -m esptool --chip esp32s3 --port /dev/ttyACM0 --no-stub \
-  verify_flash 0x8000 dist/crub-partitions.bin
-```
-
-Press Reset if the display stays dark. CRUB `pt info` must show `marauder_fs`
-at `0x7d0000` with size `0x20000` and `mesh_fs` at `0x750000` with size
-`0x40000`, while `hub`, `extra`, `apps_nvs`, `hub_config`, `spiffs`, and
-`coredump` keep their previous offsets. `extra` shrinks to `0x480000`. Do not
-erase any existing partition. The new partition starts blank and Marauder
-formats only `marauder_fs` on its first launch.
+Use the current CRUB-only layout: `extra` at `0xd0000`, size `0x680000`,
+with `mesh_fs` at `0x750000` (256 KiB) and `marauder_fs` at `0x7d0000`
+(128 KiB). It includes both settings partitions from the start. If the device
+still has a dedicated `hub` partition, follow the
+[clean installation procedure](install-crub.md#clean-installation) once.
+Do not replace only the table: the application address has changed.
 
 ## Stage and start Marauder
 
@@ -110,5 +81,5 @@ keyboard driver.
 
 Marauder's **Update Firmware** menu is hidden in this build and its update
 command refuses to write. For later versions, rebuild with the reviewed
-patch and use `upmarauder`. If the table update fails or CRUB does not boot,
+patch and use `upmarauder`. If provisioning fails or CRUB does not boot,
 restore the complete backup using [Recovery](install-crub.md#recovery).

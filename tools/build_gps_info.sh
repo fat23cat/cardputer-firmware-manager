@@ -35,7 +35,7 @@ import sys
 from firmware_manager.core import validate_image
 
 validate_image(
-    "gpsinfo", Path(sys.argv[1]), 0x480000, "arduino-lib-builder",
+    "gpsinfo", Path(sys.argv[1]), 0x680000, "arduino-lib-builder",
     "Cardputer ADV GPS Info"
 )
 PY
