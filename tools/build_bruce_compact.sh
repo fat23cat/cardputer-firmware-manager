@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Bruce with the Compact UI (github.com/fat23cat/firmware, branch feat/cardputer-compact-ui)
+# Build Bruce with the Compact UI (github.com/fat23cat/firmware, branch main)
 # from a local checkout and copy the raw application image to dist/BruceCompact.bin.
 #
 # The source is the sibling ../firmware checkout, or BRUCE_SOURCE_DIR. The build uses whatever is

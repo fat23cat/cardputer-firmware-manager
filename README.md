@@ -11,8 +11,7 @@ for one shared `extra` application slot that holds
 [Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
 [Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build), or another
 application. It prepares safe app-only updates on a FAT32 microSD card. A clean
-installation
-contains only CRUB; `extra` starts empty. Hub is installed and replaced just
+installation contains only CRUB; `extra` starts empty. Hub is installed and replaced just
 like every other application.
 
 The manager does **not** write the Cardputer's internal flash. It validates and
@@ -359,9 +358,9 @@ staging run; none of them writes the Cardputer's internal flash.
 
 ## Bruce with Compact UI
 
-`brucecompact` is a local build of Bruce from the
-[`feat/cardputer-compact-ui`](https://github.com/fat23cat/firmware/tree/feat/cardputer-compact-ui)
-branch, which adds a compact layout for the 240x135 screen, switched on in
+`brucecompact` is a local build of the
+[Bruce fork](https://github.com/fat23cat/firmware/tree/main). Its `main` branch
+includes the merged Compact UI changes for the 240x135 screen, switched on in
 **Config → Display & UI → Compact UI**. It sits next to the pinned release, so
 both images stay on the SD card:
 
