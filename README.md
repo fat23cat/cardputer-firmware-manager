@@ -71,6 +71,35 @@ clears internal settings; later app-only switches preserve them. The SD images
 are independent of the application slot's address and need no rebuild for this
 layout change.
 
+## Short development commands
+
+Run `make` for help. These commands use Python 3 and Make; npm is not required.
+
+```bash
+make build                        # Hub and Codex, no SD required
+make build APP=brucecompact        # local Bruce Compact UI
+make flash APP=hub                 # build, validate and stage on mounted SD
+make flash APP="hub codex" SD="/Volumes/My Card"
+make stage APP=hub                 # stage existing build
+make release APP=bruce             # download and stage official Bruce
+make doctor                       # catalog and shared layout
+make doctor-sd                    # also validate mounted SD
+make check
+```
+
+`SD` defaults to `/Volumes/CARDPUTER`; `WORKSPACE` defaults to the parent of
+this checkout. Build commands and image validation come from the catalog.
+The `build` CLI also works directly: `python3 -m firmware_manager build --app hub`.
+`flash`, `stage`, and `release` run doctor before and after SD staging and stop
+on any failure. `make -n flash APP=hub` previews the commands.
+
+`flash` prepares the SD card; finish installation on the Cardputer after safe
+ejection: leave `usbsd`, run `sd`, then the printed `uphub`, `upcodex`, or
+`upbrucec` command, followed by `go`. These targets do not write the device's
+internal flash over USB. Hub and Codex are the default local selections;
+`APP=brucecompact` selects the locally modified Bruce, while `APP=bruce` selects
+its official release. No `npm install` step is needed.
+
 ## Quick start
 
 Clone this repository beside the two locally built application repositories:
