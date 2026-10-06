@@ -412,6 +412,28 @@ class ImageIntegrityTest(unittest.TestCase):
 
 
 class LocalBuildTest(unittest.TestCase):
+    def test_build_without_sd_validates_output_and_never_stages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            image = workspace / "cardputer-hub/build/cardputer_hub.bin"
+            image.parent.mkdir(parents=True)
+            image.write_bytes(fake_app())
+            with mock.patch("firmware_manager.cli._build_application") as build:
+                with mock.patch("firmware_manager.cli.stage_images") as stage:
+                    with redirect_stdout(io.StringIO()):
+                        self.assertEqual(run(["build", "--app", "hub", "--workspace", str(workspace)]), 0)
+            build.assert_called_once()
+            self.assertEqual(build.call_args.args[0], "hub")
+            stage.assert_not_called()
+
+    def test_build_rejects_invalid_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            (workspace / "cardputer-hub").mkdir()
+            with mock.patch("firmware_manager.cli._build_application"):
+                with self.assertRaisesRegex(FirmwareError, "image does not exist"):
+                    run(["build", "--app", "hub", "--workspace", str(workspace)])
+
     def test_isolates_each_build_from_another_projects_esp_idf_environment(
         self,
     ) -> None:

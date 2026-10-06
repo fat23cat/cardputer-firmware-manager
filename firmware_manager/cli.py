@@ -48,7 +48,9 @@ def _build_application(
     )
 
 
-def _application_arguments(parser: argparse.ArgumentParser) -> None:
+def _application_arguments(
+    parser: argparse.ArgumentParser, *, with_sd: bool = True
+) -> None:
     parser.add_argument(
         "--app",
         action="append",
@@ -56,7 +58,8 @@ def _application_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="ID",
         help="application id; repeat for several, defaults to all",
     )
-    parser.add_argument("--sd", type=Path, required=True, help="mounted FAT32 SD root")
+    if with_sd:
+        parser.add_argument("--sd", type=Path, required=True, help="mounted FAT32 SD root")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,16 +73,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor.add_argument("--sd", type=Path)
 
+    build = subparsers.add_parser("build", help="build and validate local firmware without an SD card")
     local = subparsers.add_parser(
         "local", help="stage firmware built from local repositories"
     )
-    _application_arguments(local)
-    local.add_argument(
-        "--workspace",
-        type=Path,
-        default=PROJECT.parent if IN_CHECKOUT else Path.cwd(),
-        help="directory containing the application repositories",
-    )
+    for command in (build, local):
+        _application_arguments(command, with_sd=command is local)
+        command.add_argument(
+            "--workspace",
+            type=Path,
+            default=PROJECT.parent if IN_CHECKOUT else Path.cwd(),
+            help="directory containing the application repositories",
+        )
     local.add_argument(
         "--build", action="store_true", help="build selected repositories first"
     )
@@ -261,7 +266,7 @@ def run(arguments: Optional[List[str]] = None) -> int:
         return 0
 
     selected = resolve_apps(catalog, args.app)
-    if args.command == "local":
+    if args.command in ("build", "local"):
         if args.app in ([], ["all"]):
             selected = [
                 app_id
@@ -283,10 +288,17 @@ def run(arguments: Optional[List[str]] = None) -> int:
                 raise FirmwareError(
                     f"{app_id}: local repository not found: {repository}"
                 )
-            if args.build:
+            if args.command == "build" or args.build:
                 _build_application(app_id, app, repository)
             images[app_id] = repository / app["local_image"]
             sources[app_id] = {"source": "local", "repository": str(repository)}
+        if args.command == "build":
+            for app_id, image in images.items():
+                app = catalog["apps"][app_id]
+                validate_image(app_id, image, app["partition_size"], app["project_name"],
+                               app.get("required_image_marker"))
+                print(f"{app_id}: built and validated {image}")
+            return 0
         stage_images(catalog, images, args.sd, sources)
         _print_staged(catalog, selected)
         return 0
