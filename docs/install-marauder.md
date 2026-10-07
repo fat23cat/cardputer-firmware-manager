@@ -5,15 +5,17 @@ an 8 MiB Cardputer ADV. Only one `extra` app runs at a time; its image and the
 other app images remain on the SD card. Bruce's LittleFS partition stays at
 `0x7b0000`. Marauder uses its own 128 KiB SPIFFS partition at `0x7d0000`.
 
-The [official Cardputer ADV image](https://github.com/justcallmekoko/ESP32Marauder/releases/tag/v1.17.0)
+The [official Cardputer ADV image](https://github.com/justcallmekoko/ESP32Marauder/releases/tag/v1.18.0)
 mounts the default `spiffs` partition with format-on-failure. On this CRUB
 layout, that is Bruce's LittleFS partition, so the official image may erase
 Bruce settings. The isolated build pins the
-[Cardputer CRUB fork](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra),
-based on upstream Marauder 1.17.0. It mounts the new `marauder_fs` label and disables Marauder's own firmware
+[Cardputer CRUB fork](https://github.com/fat23cat/ESP32Marauder/tree/468de37d988d79b9a3a0f84c3cc61710adb62186),
+based on upstream Marauder 1.18.0. It mounts the `marauder_fs` label and disables Marauder's own firmware
 updater. Updates are installed through CRUB into the single `extra` slot.
-The build also gives Marauder's Bluetooth bonds and backlight preference
-separate namespaces in the existing default NVS partition. It checks stored
+The build gives Marauder's Bluetooth bonds a separate namespace in the existing
+default NVS partition. The backlight preference namespace guard is retained for
+builds with PWM brightness; stock Cardputer ADV uses on/off backlight control
+and does not persist brightness. The build checks stored
 Bluetooth record sizes and never erases the shared NVS while initializing
 NimBLE. It also avoids calling BLE stop methods after a spam iteration has
 already deinitialized NimBLE; that caused a Cardputer ADV reboot when leaving
@@ -33,7 +35,8 @@ arduino-cli core install esp32:esp32@2.0.11 --additional-urls \
 ./tools/build_marauder.sh
 ```
 
-The script checks fork commit `940ebfd380a464dd09184b2d561c11e59898922c`,
+The script fetches and checks the exact fork commit
+`468de37d988d79b9a3a0f84c3cc61710adb62186`, independently of branch heads,
 fetches the library versions used by upstream CI, applies the fork's
 `patches/nimble-crub.patch` to the pinned NimBLE library, and builds
 `dist/Marauder.bin` and `dist/Marauder.elf`. The fork includes the BLE shutdown

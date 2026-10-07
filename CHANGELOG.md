@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Update the isolated Cardputer ADV Marauder build to upstream 1.18.0, pinning
+  fork commit `468de37d988d79b9a3a0f84c3cc61710adb62186` in the catalog and build
+  recipe. Fetch that commit directly so later branch updates cannot change the
+  selected source. Preserve CRUB storage isolation, NimBLE safeguards, keyboard
+  handling, and updater guards.
 - Reject incomplete ESP segments and footers, incorrect XOR checksums, and
   incorrect embedded SHA-256 digests before SD staging and during `doctor`.
 - Prevent partition-table preparation from overwriting its full-device input

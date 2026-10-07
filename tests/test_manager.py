@@ -149,7 +149,9 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(marauder["partition_size"], 0x680000)
         self.assertEqual(marauder["repository"], "fat23cat/ESP32Marauder")
         self.assertEqual(marauder["source_revision"],
-                         "940ebfd380a464dd09184b2d561c11e59898922c")
+                         "468de37d988d79b9a3a0f84c3cc61710adb62186")
+        script = (ROOT / "tools" / "build_marauder.sh").read_text()
+        self.assertIn("source_commit=" + marauder["source_revision"], script)
         self.assertEqual(marauder["aliases"]["upmarauder"],
                          "flash /firmware/Marauder.bin extra")
         self.assertEqual(by_name["marauder_fs"], {

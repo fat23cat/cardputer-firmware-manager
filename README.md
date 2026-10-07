@@ -7,7 +7,7 @@ for one shared `extra` application slot that holds
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
 [Bruce](https://github.com/BruceDevices/firmware) (the pinned release or a local
 [Compact UI build](#bruce-with-compact-ui)),
-[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/codex/cardputer-crub-extra),
+[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/468de37d988d79b9a3a0f84c3cc61710adb62186),
 [Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
 [Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build), or another
 application. It prepares safe app-only updates on a FAT32 microSD card. A clean
