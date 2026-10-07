@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-source_commit=940ebfd380a464dd09184b2d561c11e59898922c
+source_commit=468de37d988d79b9a3a0f84c3cc61710adb62186
 arduino_cli="${ARDUINO_CLI:-arduino-cli}"
 work_dir="$(mktemp -d)"
 if [[ "${MARAUDER_KEEP_BUILD:-0}" != 1 ]]; then
@@ -15,8 +15,11 @@ source_dir="$work_dir/ESP32Marauder"
 if [[ -n "${MARAUDER_SOURCE_DIR:-}" ]]; then
   cp -R "$MARAUDER_SOURCE_DIR" "$source_dir"
 else
-  git clone --quiet --depth 1 --branch codex/cardputer-crub-extra \
-    https://github.com/fat23cat/ESP32Marauder.git "$source_dir"
+  # Fetch the reviewed commit even after the repository's branches advance.
+  git init --quiet "$source_dir"
+  git -C "$source_dir" remote add origin https://github.com/fat23cat/ESP32Marauder.git
+  git -C "$source_dir" fetch --quiet --depth 1 origin "$source_commit"
+  git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
 fi
 actual_commit="$(git -C "$source_dir" rev-parse HEAD)"
 if [[ "$actual_commit" != "$source_commit" ]]; then
