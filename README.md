@@ -9,6 +9,7 @@ for one shared `extra` application slot that holds
 [Compact UI build](#bruce-with-compact-ui)),
 [ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/468de37d988d79b9a3a0f84c3cc61710adb62186),
 [Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
+[MeshCore](https://github.com/MultiMote/meshcore-cardputer-adv) (the pinned BLE release),
 [Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build), or another
 application. It prepares safe app-only updates on a FAT32 microSD card. A clean
 installation contains only CRUB; `extra` starts empty. Hub is installed and replaced just
@@ -58,7 +59,7 @@ Routine `local` and `release` commands continue to stage SD files only.
 | Partition | Offset | Size | Contents |
 |---|---|---|---|
 | `test` | `0x10000` | 768 KiB | CRUB |
-| `extra` (`ota_0`) | `0xd0000` | 6.5 MiB | Hub, Codex, Bruce, Bruce Compact, Marauder, GPS Info, or Meshtastic, one at a time; initially empty |
+| `extra` (`ota_0`) | `0xd0000` | 6.5 MiB | Hub, Codex, Bruce, Bruce Compact, Marauder, GPS Info, MeshCore, or Meshtastic, one at a time; initially empty |
 | `mesh_fs` | `0x750000` | 256 KiB | Meshtastic LittleFS |
 | `apps_nvs` | `0x790000` | 64 KiB | Codex settings |
 | `hub_config` | `0x7a0000` | 64 KiB | Hub settings |
@@ -82,6 +83,7 @@ make flash APP=hub                 # build, validate and stage on mounted SD
 make flash APP="hub codex" SD="/Volumes/My Card"
 make stage APP=hub                 # stage existing build
 make release APP=bruce             # download and stage official Bruce
+make release APP=meshcore          # stage pinned MultiMote MeshCore BLE release
 make doctor                       # catalog and shared layout
 make doctor-sd                    # also validate mounted SD
 make check
@@ -165,6 +167,7 @@ Download the latest published release for one application:
 ```bash
 python3 -m firmware_manager release --app hub --sd /Volumes/CARDPUTER
 python3 -m firmware_manager release --app bruce --sd /Volumes/CARDPUTER
+python3 -m firmware_manager release --app meshcore --sd /Volumes/CARDPUTER
 ```
 
 Pin an exact release tag:
@@ -199,6 +202,14 @@ with another tag stages that release after GitHub's digest check only. To move
 the default to a new Bruce release, review it and update both `tag` and the
 merged asset's `sha256` in `firmware-manager.json`. Hub and Codex are not
 pinned and follow their latest release.
+
+MeshCore uses the reviewed MultiMote `2026.7.3` BLE release based on MeshCore
+1.16.0. The catalog pins the raw application SHA-256 and excludes merged
+images. Settings, identity, contacts, channels, and chat history are stored
+on the SD card; it must remain inserted during use. `upmeshcore` writes only
+`extra`, and `go` starts it. No partition migration is needed. See
+[Install MeshCore](docs/install-meshcore.md) for staging, storage boundaries,
+BLE pairing, and recovery. The upstream author has paused development.
 
 The command fails before changing the SD card if a repository has no published
 release, no matching application asset, or no verifiable SHA-256 digest.

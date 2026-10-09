@@ -91,7 +91,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(
             resolve_apps(self.catalog, ["all"]),
             ["hub", "codex", "bruce", "brucecompact", "marauder", "gpsinfo",
-             "meshtastic"],
+             "meshcore", "meshtastic"],
         )
         self.assertEqual(resolve_apps(self.catalog, ["codex"]), ["codex"])
 
@@ -924,6 +924,8 @@ class StagingTest(unittest.TestCase):
                     "flash /firmware/Marauder.bin extra",
                     "upgpsinfo",
                     "flash /firmware/GPSInfo.bin extra",
+                    "upmeshcore",
+                    "flash /firmware/MeshCore.bin extra -nospiffs",
                     "upmesh",
                     "flash /firmware/Meshtastic.bin extra",
                 ],
@@ -1134,6 +1136,108 @@ class DoctorTest(unittest.TestCase):
 class ReleaseClientTest(unittest.TestCase):
     def setUp(self) -> None:
         self.catalog = load_catalog(ROOT / "firmware-manager.json")
+
+    def test_meshcore_release_downloads_only_raw_ble_app_and_preserves_sd_data(self) -> None:
+        app = deepcopy(self.catalog["apps"]["meshcore"])
+        image = fake_app(b"Insert SD Card meshcore_custom", "arduino-lib-builder")
+        app["release_pin"]["sha256"] = hashlib.sha256(image).hexdigest()
+        asset_name = "cardputer_adv_companion_radio_ble-v1.16.0-2026.7.3.bin"
+        app_url = "https://example.invalid/meshcore-app"
+        endpoint = (
+            "https://api.github.com/repos/MultiMote/meshcore-cardputer-adv/"
+            "releases/tags/2026.7.3"
+        )
+        release = {
+            "tag_name": "2026.7.3",
+            "assets": [
+                {"name": asset_name.replace(".bin", "-merged.bin"),
+                 "browser_download_url": "https://example.invalid/full-flash"},
+                {"name": asset_name.replace("_ble-", "_usb-"),
+                 "browser_download_url": "https://example.invalid/usb"},
+                {"name": asset_name, "browser_download_url": app_url,
+                 "digest": "sha256:" + hashlib.sha256(image).hexdigest()},
+            ],
+        }
+        responses = {endpoint: json.dumps(release).encode(), app_url: image}
+        fetched = []
+
+        def fetch(url, _headers):
+            fetched.append(url)
+            return responses[url]
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sd = root / "card"
+            sd.mkdir()
+            bruce = root / "Bruce.bin"
+            bruce.write_bytes(fake_app(b"Bruce", "arduino-lib-builder"))
+            stage_images(self.catalog, {"bruce": bruce}, sd, require_mount=False)
+            preserved = {
+                ".crub/boot": b"boots 1500\nfetch\n",
+                "identity": b"existing mesh identity",
+                "prefs": b"existing MeshCore preferences",
+                "meshcore_custom/prefs": b"existing UI preferences",
+                "firmware/Bruce.bin": bruce.read_bytes(),
+            }
+            for name, content in preserved.items():
+                destination = sd / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(content)
+            aliases = sd / ".crub/aliases"
+            aliases.write_text("music\nbeep 440 100\n" + aliases.read_text())
+
+            downloaded, tag = GitHubReleaseClient(fetch=fetch).download(
+                "meshcore", app, None, root / "downloads"
+            )
+            stage_images(self.catalog, {"meshcore": downloaded}, sd, {
+                "meshcore": {"source": "github-release", "repository": app["repository"],
+                             "tag": tag},
+            }, require_mount=False)
+            self.assertEqual(fetched, [endpoint, app_url])
+            self.assertEqual((sd / "firmware/MeshCore.bin").read_bytes(), image)
+            for name, content in preserved.items():
+                self.assertEqual((sd / name).read_bytes(), content, name)
+            self.assertIn("music\nbeep 440 100\n", aliases.read_text())
+            self.assertIn("upmeshcore\nflash /firmware/MeshCore.bin extra -nospiffs\n",
+                          aliases.read_text())
+            self.assertIn("MESHCORE\nstart: upmeshcore -> go", (sd / "firmwares.txt").read_text())
+            with redirect_stdout(io.StringIO()):
+                _doctor(self.catalog, sd, require_mount=False)
+            lock = json.loads((sd / "firmware/firmware-manager-lock.json").read_text())
+            self.assertEqual(lock["apps"]["meshcore"]["tag"], "2026.7.3")
+
+    def test_meshcore_rejects_merged_only_release(self) -> None:
+        release = {"tag_name": "2026.7.3", "assets": [{
+            "name": "cardputer_adv_companion_radio_ble-v1.16.0-2026.7.3-merged.bin",
+        }]}
+        client = GitHubReleaseClient(fetch=lambda _url, _headers: json.dumps(release).encode())
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(FirmwareError, "no matching firmware asset"):
+                client.download("meshcore", self.catalog["apps"]["meshcore"],
+                                None, Path(directory))
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_meshcore_catalog_pins_reviewed_sd_build(self) -> None:
+        app = self.catalog["apps"]["meshcore"]
+        self.assertEqual(app["repository"], "MultiMote/meshcore-cardputer-adv")
+        self.assertEqual(app["release_pin"], {
+            "tag": "2026.7.3",
+            "sha256": "8bcf7ffd0ba1fa5224a1c00478dc1aea26b3ab0e768a86f4e8bce0edb204a894",
+        })
+        self.assertEqual(app.get("release_image", "app"), "app")
+        self.assertEqual(app["required_image_marker"], "Insert SD Card")
+        self.assertNotIn("local_image", app)
+
+    def test_meshcore_rejects_image_without_sd_storage_marker_before_staging(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sd = root / "card"
+            sd.mkdir()
+            image = root / "other.bin"
+            image.write_bytes(fake_app(b"ordinary ESP application", "arduino-lib-builder"))
+            with self.assertRaisesRegex(FirmwareError, "required image marker"):
+                stage_images(self.catalog, {"meshcore": image}, sd, require_mount=False)
+            self.assertEqual(list(sd.iterdir()), [])
 
     def test_downloads_matching_application_asset_and_checks_github_digest(self) -> None:
         image = fake_app(b"release")

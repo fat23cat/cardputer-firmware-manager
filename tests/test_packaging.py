@@ -58,7 +58,9 @@ class PackagingTest(unittest.TestCase):
                               archive.read(entry_points).decode())
             env = dict(os.environ, PYTHONPATH=str(installed))
             entry = [sys.executable, "-c", "from firmware_manager.cli import main; main()"]
-            self.assertIn("meshtastic", self.command(entry + ["list"], root, env))
+            listing = self.command(entry + ["list"], root, env)
+            self.assertIn("meshtastic", listing)
+            self.assertIn("meshcore", listing)
             self.assertIn("layout: ok", self.command(entry + ["doctor"], root, env))
 
             # A supplied catalog resolves its layout relative to that catalog.
