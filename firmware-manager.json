@@ -159,6 +159,25 @@
         "upgpsinfo": "flash /firmware/GPSInfo.bin extra"
       }
     },
+    "meshcore": {
+      "name": "MeshCore for Cardputer ADV (MultiMote, SD storage)",
+      "repository": "MultiMote/meshcore-cardputer-adv",
+      "release_asset": "cardputer_adv_companion_radio_ble-v(?!.*-merged\\.bin$).+\\.bin",
+      "release_image": "app",
+      "release_pin": {
+        "tag": "2026.7.3",
+        "sha256": "8bcf7ffd0ba1fa5224a1c00478dc1aea26b3ab0e768a86f4e8bce0edb204a894"
+      },
+      "partition": "extra",
+      "partition_size": 6815744,
+      "project_name": "arduino-lib-builder",
+      "required_image_marker": "Insert SD Card",
+      "sd_path": "firmware/MeshCore.bin",
+      "start": ["upmeshcore", "go"],
+      "aliases": {
+        "upmeshcore": "flash /firmware/MeshCore.bin extra -nospiffs"
+      }
+    },
     "meshtastic": {
       "name": "Meshtastic for Cardputer ADV (isolated)",
       "repository": "meshtastic/firmware",

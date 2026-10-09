@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the pinned MultiMote MeshCore `2026.7.3` BLE application for Cardputer
+  ADV + Cap LoRa-1262. Stage only the verified raw image as `firmware/MeshCore.bin`
+  and install it into `extra` with `upmeshcore`; MeshCore data lives on SD.
+  Preserve the shared partition layout, other SD images, aliases, and settings.
 - Update the isolated Cardputer ADV Marauder build to upstream 1.18.0, pinning
   fork commit `468de37d988d79b9a3a0f84c3cc61710adb62186` in the catalog and build
   recipe. Fetch that commit directly so later branch updates cannot change the
