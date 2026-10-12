@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add Hotspot Arcade 0.8.0 to the shared `extra` slot as a pinned release
+  (`genkigenki/hotspot-arcade-cardputer`, application asset SHA-256
+  `f64e3c73…cbf5`), staged as `firmware/HotspotArcade.bin` and flashed with
+  `uphotspot`. Reject images without the `Hotspot Arcade` marker before SD
+  staging. Its settings stay on the SD card and in its own NVS namespaces.
 - Update the isolated Cardputer ADV Marauder build to upstream 1.18.0, pinning
   fork commit `468de37d988d79b9a3a0f84c3cc61710adb62186` in the catalog and build
   recipe. Fetch that commit directly so later branch updates cannot change the
