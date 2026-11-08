@@ -9,8 +9,9 @@ for one shared `extra` application slot that holds
 [Compact UI build](#bruce-with-compact-ui)),
 [ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/468de37d988d79b9a3a0f84c3cc61710adb62186),
 [Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
-[Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build), or another
-application. It prepares safe app-only updates on a FAT32 microSD card. A clean
+[Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build),
+[Hotspot Arcade](https://github.com/genkigenki/hotspot-arcade-cardputer) (the pinned
+release), or another application. It prepares safe app-only updates on a FAT32 microSD card. A clean
 installation contains only CRUB; `extra` starts empty. Hub is installed and replaced just
 like every other application.
 
@@ -58,7 +59,7 @@ Routine `local` and `release` commands continue to stage SD files only.
 | Partition | Offset | Size | Contents |
 |---|---|---|---|
 | `test` | `0x10000` | 768 KiB | CRUB |
-| `extra` (`ota_0`) | `0xd0000` | 6.5 MiB | Hub, Codex, Bruce, Bruce Compact, Marauder, GPS Info, or Meshtastic, one at a time; initially empty |
+| `extra` (`ota_0`) | `0xd0000` | 6.5 MiB | Hub, Codex, Bruce, Bruce Compact, Marauder, GPS Info, Meshtastic, or Hotspot Arcade, one at a time; initially empty |
 | `mesh_fs` | `0x750000` | 256 KiB | Meshtastic LittleFS |
 | `apps_nvs` | `0x790000` | 64 KiB | Codex settings |
 | `hub_config` | `0x7a0000` | 64 KiB | Hub settings |
@@ -129,7 +130,7 @@ python3 -m firmware_manager local \
 
 `local --app all` selects Hub and Codex. GPS Info, Marauder, and Meshtastic
 require explicit selection; Marauder and Meshtastic also require their isolated
-builds. Bruce has no local build and is staged with `release`. The local Bruce
+builds. Bruce and Hotspot Arcade have no local build and are staged with `release`. The local Bruce
 Compact UI build is also selected explicitly; see
 [Bruce with Compact UI](#bruce-with-compact-ui).
 
@@ -165,6 +166,7 @@ Download the latest published release for one application:
 ```bash
 python3 -m firmware_manager release --app hub --sd /Volumes/CARDPUTER
 python3 -m firmware_manager release --app bruce --sd /Volumes/CARDPUTER
+python3 -m firmware_manager release --app hotspot --sd /Volumes/CARDPUTER
 ```
 
 Pin an exact release tag:
@@ -197,8 +199,9 @@ release through `release_pin`: without `--tag`, `release` downloads that tag
 and rejects the asset unless it matches the pinned SHA-256. `--tag bruce=TAG`
 with another tag stages that release after GitHub's digest check only. To move
 the default to a new Bruce release, review it and update both `tag` and the
-merged asset's `sha256` in `firmware-manager.json`. Hub and Codex are not
-pinned and follow their latest release.
+merged asset's `sha256` in `firmware-manager.json`. Hotspot Arcade is pinned
+the same way to its reviewed application asset. Hub and Codex are not pinned and
+follow their latest release.
 
 The command fails before changing the SD card if a repository has no published
 release, no matching application asset, or no verifiable SHA-256 digest.
@@ -213,7 +216,7 @@ After staging:
 2. Press any Cardputer key to exit `usbsd`.
 3. Run `sd` so CRUB remounts the card and reloads the staged aliases.
 4. Run `fw` to read the firmware list on the SD card.
-5. Choose exactly one updater: `uphub`, `upcodex`, `upbruce`, `upbrucec`, `upmarauder`, `upgpsinfo`, or `upmesh`. All write `extra`.
+5. Choose exactly one updater: `uphub`, `upcodex`, `upbruce`, `upbrucec`, `upmarauder`, `upgpsinfo`, `upmesh`, or `uphotspot`. All write `extra`.
 6. Wait for `app: ok` and `flash complete` after every update command.
 7. Run `go` to launch the application currently in `extra`.
 
@@ -294,6 +297,9 @@ go
 
 upmesh      # later: replace GPS Info with isolated Meshtastic
 go
+
+uphotspot   # later: replace Meshtastic with Hotspot Arcade
+go
 ```
 
 Switching replaces the current application, including Hub. Hub keeps its
@@ -318,10 +324,34 @@ reset clears only Meshtastic's own NVS namespaces, and its OTA update is
 disabled. The official Meshtastic image and web flasher must not be used on this
 layout. See [Install Meshtastic](docs/install-meshtastic.md).
 
+Hotspot Arcade keeps its access point name, audio, language, and score history
+in `/hotspot-arcade/` on the SD card, with fallback copies in its own `ha_cfg`,
+`ha_hist`, and `ha-art` namespaces of the shared default NVS partition. It has
+no flash file system and no OTA updater, so it does not touch `spiffs` or any
+other application's data. See [Hotspot Arcade](#hotspot-arcade).
+
 CRUB does not report which application is in `extra`, and neither can the
 manager, which only sees the SD card. There is deliberately no `hub`, `codex`,
-`bruce`, `marauder`, `gpsinfo`, or `meshtastic` launch alias, because it would silently start whichever application
+`bruce`, `marauder`, `gpsinfo`, `meshtastic`, or `hotspot` launch alias, because it would silently start whichever application
 the slot holds.
+
+## Hotspot Arcade
+
+Hotspot Arcade 0.8.0 turns the Cardputer into a Wi-Fi access point with a captive
+portal that runs party games in guests' phone browsers. The catalog pins the
+published `hotspot-arcade-cardputer.ino.bin` application image of release
+`v0.8.0` by SHA-256; the manager stages it as `firmware/HotspotArcade.bin` and
+rejects images without the `Hotspot Arcade` marker. Do not use the
+`hotspot-arcade-cardputer.full.bin` image or the README's `0x170000` address:
+both assume the stock M5Launcher layout and would overwrite CRUB.
+
+```bash
+make release APP=hotspot
+```
+
+Then run `sd`, `fw`, `uphotspot`, and `go` on the Cardputer. The upstream
+project tests the original Cardputer; the pinned image contains the M5Cardputer
+library's ADV (TCA8418) keyboard driver.
 
 ## Cardputer ADV GPS Info
 

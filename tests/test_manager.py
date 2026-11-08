@@ -91,7 +91,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(
             resolve_apps(self.catalog, ["all"]),
             ["hub", "codex", "bruce", "brucecompact", "marauder", "gpsinfo",
-             "meshtastic"],
+             "meshtastic", "hotspot"],
         )
         self.assertEqual(resolve_apps(self.catalog, ["codex"]), ["codex"])
 
@@ -180,6 +180,25 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(gps["aliases"]["upgpsinfo"],
                          "flash /firmware/GPSInfo.bin extra")
         self.assertEqual(gps["start"], ["upgpsinfo", "go"])
+
+    def test_hotspot_arcade_is_a_pinned_release_in_shared_extra(self) -> None:
+        hotspot = self.catalog["apps"]["hotspot"]
+        self.assertEqual(hotspot["repository"], "genkigenki/hotspot-arcade-cardputer")
+        self.assertEqual(hotspot["release_asset"], r"hotspot-arcade-cardputer\.ino\.bin")
+        self.assertEqual(hotspot.get("release_image", "app"), "app")
+        self.assertEqual(hotspot["release_pin"], {
+            "tag": "v0.8.0",
+            "sha256": "f64e3c73c7a3c6fc221aee090b4d988a7bea8af05525b766c16a7075a223cbf5",
+        })
+        self.assertEqual(hotspot["partition"], "extra")
+        self.assertEqual(hotspot["partition_size"], 0x680000)
+        self.assertEqual(hotspot["project_name"], "arduino-lib-builder")
+        self.assertEqual(hotspot["required_image_marker"], "Hotspot Arcade")
+        self.assertEqual(hotspot["sd_path"], "firmware/HotspotArcade.bin")
+        self.assertNotIn("local_image", hotspot)
+        self.assertEqual(hotspot["aliases"]["uphotspot"],
+                         "flash /firmware/HotspotArcade.bin extra")
+        self.assertEqual(hotspot["start"], ["uphotspot", "go"])
 
     def test_meshtastic_has_isolated_settings_and_shares_extra(self) -> None:
         partitions = validate_layout(ROOT / self.catalog["layout"], 0x800000)
@@ -650,6 +669,42 @@ class StagingTest(unittest.TestCase):
             self.assertIn("GPSINFO\nstart: upgpsinfo -> go",
                           (sd / "firmwares.txt").read_text())
 
+    def test_staging_hotspot_arcade_preserves_other_images_and_lists_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            (sd / "firmware").mkdir(parents=True)
+            bruce = sd / "firmware" / "Bruce.bin"
+            bruce.write_bytes(fake_app(b"Bruce", "arduino-lib-builder"))
+            hotspot = root / "hotspot-arcade-cardputer.ino.bin"
+            hotspot.write_bytes(fake_app(b"Hotspot Arcade", "arduino-lib-builder"))
+
+            stage_images(self.catalog, {"hotspot": hotspot}, sd,
+                         require_mount=False)
+
+            self.assertEqual(bruce.read_bytes(),
+                             fake_app(b"Bruce", "arduino-lib-builder"))
+            self.assertEqual((sd / "firmware" / "HotspotArcade.bin").read_bytes(),
+                             hotspot.read_bytes())
+            self.assertIn("uphotspot\nflash /firmware/HotspotArcade.bin extra\n",
+                          (sd / ".crub" / "aliases").read_text())
+            self.assertIn("HOTSPOT\nstart: uphotspot -> go",
+                          (sd / "firmwares.txt").read_text())
+
+    def test_rejects_unidentified_hotspot_arcade_image_before_writing_sd(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            sd = root / "card"
+            sd.mkdir()
+            image = root / "ordinary-firmware.bin"
+            image.write_bytes(fake_app(b"unrelated firmware", "arduino-lib-builder"))
+
+            with self.assertRaisesRegex(FirmwareError, "marker"):
+                stage_images(self.catalog, {"hotspot": image}, sd,
+                             require_mount=False)
+
+            self.assertFalse((sd / "firmware").exists())
+
     def test_rejects_unidentified_gps_info_image_before_writing_sd(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -926,6 +981,8 @@ class StagingTest(unittest.TestCase):
                     "flash /firmware/GPSInfo.bin extra",
                     "upmesh",
                     "flash /firmware/Meshtastic.bin extra",
+                    "uphotspot",
+                    "flash /firmware/HotspotArcade.bin extra",
                 ],
             )
 

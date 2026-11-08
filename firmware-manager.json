@@ -176,6 +176,24 @@
       "aliases": {
         "upmesh": "flash /firmware/Meshtastic.bin extra"
       }
+    },
+    "hotspot": {
+      "name": "Hotspot Arcade",
+      "repository": "genkigenki/hotspot-arcade-cardputer",
+      "release_asset": "hotspot-arcade-cardputer\\.ino\\.bin",
+      "release_pin": {
+        "tag": "v0.8.0",
+        "sha256": "f64e3c73c7a3c6fc221aee090b4d988a7bea8af05525b766c16a7075a223cbf5"
+      },
+      "partition": "extra",
+      "partition_size": 6815744,
+      "project_name": "arduino-lib-builder",
+      "required_image_marker": "Hotspot Arcade",
+      "sd_path": "firmware/HotspotArcade.bin",
+      "start": ["uphotspot", "go"],
+      "aliases": {
+        "uphotspot": "flash /firmware/HotspotArcade.bin extra"
+      }
     }
   }
 }
