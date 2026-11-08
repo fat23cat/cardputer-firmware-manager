@@ -2,13 +2,22 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
-source_commit=468de37d988d79b9a3a0f84c3cc61710adb62186
+source_commit=0ca2c14a9f816f8f3eaafa216c31e864f93aa159
+# Upstream v1.20.0 builds Cardputer ADV with this ESP32 Arduino core and NimBLE 2.3.8.
+esp32_core=3.3.4
 arduino_cli="${ARDUINO_CLI:-arduino-cli}"
 work_dir="$(mktemp -d)"
 if [[ "${MARAUDER_KEEP_BUILD:-0}" != 1 ]]; then
   trap 'rm -rf "$work_dir"' EXIT
 else
   printf 'Marauder build workspace: %s\n' "$work_dir"
+fi
+
+installed_core="$("$arduino_cli" core list | awk '$1 == "esp32:esp32" { print $2 }')"
+if [[ "$installed_core" != "$esp32_core" ]]; then
+  printf 'Marauder needs esp32:esp32 %s (installed: %s)\n' \
+    "$esp32_core" "${installed_core:-none}" >&2
+  exit 1
 fi
 
 source_dir="$work_dir/ESP32Marauder"
@@ -45,7 +54,7 @@ else
   clone_library CustomXPT2046_Touchscreen PaulStoffregen/XPT2046_Touchscreen v1.4
   clone_library Customlv_arduino lvgl/lv_arduino 3.0.0
   clone_library CustomJPEGDecoder Bodmer/JPEGDecoder 1.8.0
-  clone_library CustomNimBLE-Arduino h2zero/NimBLE-Arduino 1.3.8
+  clone_library CustomNimBLE-Arduino h2zero/NimBLE-Arduino 2.3.8
   clone_library CustomAdafruit_NeoPixel adafruit/Adafruit_NeoPixel 1.12.0
   clone_library CustomArduinoJson bblanchon/ArduinoJson v6.18.2
   clone_library CustomLinkedList ivanseidel/LinkedList v1.3.3
@@ -56,7 +65,7 @@ else
 fi
 
 nimble_dir="$libraries/CustomNimBLE-Arduino"
-nimble_commit=4a7529eef96bf0f2ff5cb9362304db228e6b6538
+nimble_commit=494d44196d78660656c0a6ee38fa8776f94d3ba2
 if [[ "$(git -C "$nimble_dir" rev-parse HEAD)" != "$nimble_commit" ]]; then
   echo "Unexpected NimBLE source revision" >&2
   exit 1
@@ -86,7 +95,7 @@ PY
 "$arduino_cli" compile \
   --fqbn 'esp32:esp32:esp32s3:PartitionScheme=min_spiffs,FlashSize=8M,PSRAM=disabled' \
   --libraries "$libraries" \
-  --build-property 'compiler.cpp.extra_flags=-DMARAUDER_CARDPUTER_ADV -DCRUB_SHARED_EXTRA' \
+  --build-property 'compiler.cpp.extra_flags=-DMARAUDER_CARDPUTER_ADV -DCRUB_SHARED_EXTRA -fno-exceptions' \
   --build-property 'compiler.c.elf.extra_flags=-Wl,-zmuldefs' \
   --warnings none \
   --output-dir "$work_dir/build" \

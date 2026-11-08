@@ -126,7 +126,7 @@
     "marauder": {
       "name": "ESP32 Marauder for Cardputer ADV (isolated)",
       "repository": "fat23cat/ESP32Marauder",
-      "source_revision": "468de37d988d79b9a3a0f84c3cc61710adb62186",
+      "source_revision": "0ca2c14a9f816f8f3eaafa216c31e864f93aa159",
       "local_repository": "cardputer-firmware-manager",
       "build_command": ["./tools/build_marauder.sh"],
       "local_image": "dist/Marauder.bin",
