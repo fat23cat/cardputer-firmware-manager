@@ -149,9 +149,14 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(marauder["partition_size"], 0x680000)
         self.assertEqual(marauder["repository"], "fat23cat/ESP32Marauder")
         self.assertEqual(marauder["source_revision"],
-                         "468de37d988d79b9a3a0f84c3cc61710adb62186")
+                         "0ca2c14a9f816f8f3eaafa216c31e864f93aa159")
         script = (ROOT / "tools" / "build_marauder.sh").read_text()
         self.assertIn("source_commit=" + marauder["source_revision"], script)
+        # Upstream v1.20.0 builds Cardputer ADV with core 3.3.4 and NimBLE 2.3.8.
+        self.assertIn("esp32_core=3.3.4", script)
+        self.assertIn("h2zero/NimBLE-Arduino 2.3.8", script)
+        self.assertIn("nimble_commit=494d44196d78660656c0a6ee38fa8776f94d3ba2",
+                      script)
         self.assertEqual(marauder["aliases"]["upmarauder"],
                          "flash /firmware/Marauder.bin extra")
         self.assertEqual(by_name["marauder_fs"], {

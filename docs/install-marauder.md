@@ -5,12 +5,12 @@ an 8 MiB Cardputer ADV. Only one `extra` app runs at a time; its image and the
 other app images remain on the SD card. Bruce's LittleFS partition stays at
 `0x7b0000`. Marauder uses its own 128 KiB SPIFFS partition at `0x7d0000`.
 
-The [official Cardputer ADV image](https://github.com/justcallmekoko/ESP32Marauder/releases/tag/v1.18.0)
+The [official Cardputer ADV image](https://github.com/justcallmekoko/ESP32Marauder/releases/tag/v1.20.0)
 mounts the default `spiffs` partition with format-on-failure. On this CRUB
 layout, that is Bruce's LittleFS partition, so the official image may erase
 Bruce settings. The isolated build pins the
-[Cardputer CRUB fork](https://github.com/fat23cat/ESP32Marauder/tree/468de37d988d79b9a3a0f84c3cc61710adb62186),
-based on upstream Marauder 1.18.0. It mounts the `marauder_fs` label and disables Marauder's own firmware
+[Cardputer CRUB fork](https://github.com/fat23cat/ESP32Marauder/tree/0ca2c14a9f816f8f3eaafa216c31e864f93aa159),
+based on upstream Marauder 1.20.0. It mounts the `marauder_fs` label and disables Marauder's own firmware
 updater. Updates are installed through CRUB into the single `extra` slot.
 The build gives Marauder's Bluetooth bonds a separate namespace in the existing
 default NVS partition. The backlight preference namespace guard is retained for
@@ -24,21 +24,28 @@ already deinitialized NimBLE; that caused a Cardputer ADV reboot when leaving
 ## Build the application
 
 Install [Arduino CLI](https://arduino.github.io/arduino-cli/latest/installation/)
-and Arduino ESP32 core 2.0.11. Marauder's upstream Cardputer ADV build uses
-that core and the `MARAUDER_CARDPUTER_ADV` target. On a clean Arduino CLI setup:
+and Arduino ESP32 core 3.3.4. Since Marauder 1.19.0, the upstream Cardputer ADV
+build uses that core, NimBLE-Arduino 2.3.8, and the `MARAUDER_CARDPUTER_ADV`
+target. The script stops before fetching anything if another `esp32:esp32`
+version is installed. On a clean Arduino CLI setup:
 
 ```bash
 arduino-cli core update-index --additional-urls \
-  https://github.com/espressif/arduino-esp32/releases/download/2.0.11/package_esp32_dev_index.json
-arduino-cli core install esp32:esp32@2.0.11 --additional-urls \
-  https://github.com/espressif/arduino-esp32/releases/download/2.0.11/package_esp32_dev_index.json
+  https://github.com/espressif/arduino-esp32/releases/download/3.3.4/package_esp32_dev_index.json
+arduino-cli core install esp32:esp32@3.3.4 --additional-urls \
+  https://github.com/espressif/arduino-esp32/releases/download/3.3.4/package_esp32_dev_index.json
 ./tools/build_marauder.sh
 ```
 
+If you keep core 2.0.11 for other projects, install 3.3.4 into a separate
+Arduino CLI data directory and point `ARDUINO_CLI` (or the `ARDUINO_DIRECTORIES_*`
+environment variables) at it.
+
 The script fetches and checks the exact fork commit
-`468de37d988d79b9a3a0f84c3cc61710adb62186`, independently of branch heads,
+`0ca2c14a9f816f8f3eaafa216c31e864f93aa159`, independently of branch heads,
 fetches the library versions used by upstream CI, applies the fork's
-`patches/nimble-crub.patch` to the pinned NimBLE library, and builds
+`patches/nimble-crub.patch` to the pinned NimBLE-Arduino 2.3.8 library, adds
+`-fno-exceptions` as upstream CI does (without editing the installed core), and builds
 `dist/Marauder.bin` and `dist/Marauder.elf`. The fork includes the BLE shutdown
 guard and handles one BLE spam payload per main loop to improve keyboard
 response. The script checks the

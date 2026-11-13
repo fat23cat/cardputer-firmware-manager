@@ -7,7 +7,7 @@ for one shared `extra` application slot that holds
 [Codex Microputer ADV](https://github.com/fat23cat/codex-microputer-adv),
 [Bruce](https://github.com/BruceDevices/firmware) (the pinned release or a local
 [Compact UI build](#bruce-with-compact-ui)),
-[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/468de37d988d79b9a3a0f84c3cc61710adb62186),
+[ESP32 Marauder](https://github.com/fat23cat/ESP32Marauder/tree/0ca2c14a9f816f8f3eaafa216c31e864f93aa159),
 [Cardputer ADV GPS Info](https://github.com/DevinWatson/Cardputer-Adv-GPS-Info),
 [Meshtastic](https://github.com/meshtastic/firmware) (an isolated local build),
 [Hotspot Arcade](https://github.com/genkigenki/hotspot-arcade-cardputer) (the pinned

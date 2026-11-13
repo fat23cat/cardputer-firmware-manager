@@ -41,6 +41,18 @@ class MarauderSourceTest(unittest.TestCase):
         ))
         self.libraries = self.root / "libraries"
         self.libraries.mkdir()
+        self.arduino_cli = self.fake_arduino_cli("3.3.4")
+
+    def fake_arduino_cli(self, core: str) -> Path:
+        path = self.root / ("arduino-cli-" + core)
+        path.write_text(
+            "#!/bin/sh\n"
+            "[ \"$1 $2\" = \"core list\" ] || exit 2\n"
+            "echo 'ID          Installed Latest Name'\n"
+            "echo 'esp32:esp32 " + core + "    3.3.12 esp32'\n"
+        )
+        path.chmod(0o755)
+        return path
 
     def git(self, *args: str) -> str:
         return subprocess.check_output([
@@ -48,9 +60,11 @@ class MarauderSourceTest(unittest.TestCase):
             "commit.gpgsign=false", "-C", str(self.repository), *args,
         ], text=True)
 
-    def run_recipe(self, source: Path | None = None) -> tuple:
+    def run_recipe(self, source: Path | None = None,
+                   arduino_cli: Path | None = None) -> tuple:
         environment = os.environ.copy()
         environment.update({
+            "ARDUINO_CLI": str(arduino_cli or self.arduino_cli),
             "MARAUDER_KEEP_BUILD": "1",
             "MARAUDER_LIBRARIES_DIR": str(self.libraries),
             "GIT_CONFIG_COUNT": "1",
@@ -90,3 +104,11 @@ class MarauderSourceTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.git("rev-parse", "HEAD").strip(), self.newer)
         self.assertEqual(readme.read_text(), "user changes\n")
+
+    def test_rejects_unsupported_esp32_core_before_fetching_source(self) -> None:
+        result, workspace = self.run_recipe(
+            arduino_cli=self.fake_arduino_cli("2.0.11"))
+        self.assertIn("Marauder needs esp32:esp32 3.3.4", result.stderr)
+        self.assertIn("installed: 2.0.11", result.stderr)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((workspace / "ESP32Marauder").exists())

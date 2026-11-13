@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Update the isolated Cardputer ADV Marauder build to upstream 1.20.0, pinning
+  fork commit `0ca2c14a9f816f8f3eaafa216c31e864f93aa159`. Follow upstream's Cardputer ADV
+  toolchain: ESP32 Arduino core 3.3.4 and NimBLE-Arduino 2.3.8. The build stops
+  early when another core version is installed. The fork's NimBLE patch is ported
+  to 2.3.8 and keeps the `marauder_bond` namespace, never erases the shared NVS
+  and checks the size of every stored bond record type.
 - Add Hotspot Arcade 0.8.0 to the shared `extra` slot as a pinned release
   (`genkigenki/hotspot-arcade-cardputer`, application asset SHA-256
   `f64e3c73…cbf5`), staged as `firmware/HotspotArcade.bin` and flashed with
